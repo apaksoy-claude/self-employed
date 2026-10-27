@@ -137,15 +137,18 @@ final class Gmail
         return implode(', ', $bits);
     }
 
-    /** Ready-made rules to start from (the ones that used to be built in). @return list<array<string,string>> */
+    /** Example rules to start from, written for no supplier in particular: each one is meant to be changed to suit. @return list<array<string,string>> */
     public static function starters(): array
     {
-        $o = ['from' => 'ottocar, ordwayplatform', 'attach' => 'pdf', 'ref_prefix' => 'INV', 'category' => '', 'paid_by' => 'Card'];
         return [
-            ['name' => 'Heathrow Drop-Off Fee', 'from' => 'apcoa, heathrow', 'subject' => 'drop, forecourt, payment, receipt, charge, fee', 'amount_after' => 'payment amount, total, amount', 'title' => 'Heathrow Drop-Off Fee', 'category' => 'Parking And Tolls', 'paid_by' => 'Card'],
-            ['name' => 'Otto Road Tax', 'body' => 'road tax, vehicle tax, vehicle excise', 'title' => 'Road Tax (Otto) {ref}', 'category' => 'Road Tax', 'supplier' => 'Otto Car'] + $o,
-            ['name' => 'Otto Vehicle Rent', 'body' => 'rent, rental, hire', 'title' => 'Vehicle Rent (Otto) {ref}', 'category' => 'Vehicle Rental', 'supplier' => 'Otto Car'] + $o,
-            ['name' => 'Otto Other Charges', 'body' => 'INV', 'title' => 'Otto Invoice {ref}', 'category' => 'Vehicle Costs', 'supplier' => 'Otto Car'] + $o,
+            ['name' => 'Parking Receipts', 'subject' => 'parking receipt, parking payment, parking charge, parking session, pay and display', 'amount_after' => 'amount paid, payment amount, total, amount',
+                'title' => 'Parking Fee', 'category' => 'Parking and Tolls', 'paid_by' => 'Card'],
+            ['name' => 'Supplier Invoices With A PDF', 'subject' => 'invoice', 'attach' => 'pdf', 'exclude' => 'newsletter, unsubscribe', 'ref_prefix' => 'INV', 'amount_from' => 'pdf',
+                'amount_after' => 'total due, amount due, balance due, total', 'title' => 'Supplier Invoice {ref}', 'category' => '', 'paid_by' => 'Bank Transfer'],
+            ['name' => 'Software Subscriptions', 'subject' => 'subscription, renewal, your receipt, payment receipt', 'body' => 'subscription, plan', 'exclude' => 'free trial',
+                'amount_after' => 'amount paid, total, amount', 'title' => '', 'category' => 'Software and Subscriptions', 'paid_by' => 'Card'],
+            ['name' => 'Fuel Receipts', 'subject' => 'fuel, receipt', 'body' => 'litres, unleaded, diesel, fuel', 'amount_after' => 'total, amount',
+                'title' => 'Fuel', 'category' => 'Fuel', 'paid_by' => 'Card'],
         ];
     }
 

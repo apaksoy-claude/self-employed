@@ -64,7 +64,7 @@ final class VehicleController
         $errors = [];
         $name = trim($request->string('name'));
         if ($name === '') {
-            $errors['name'] = ['Give the vehicle a name, for example "Toyota Prius (Ottocar)".'];
+            $errors['name'] = ['Give the vehicle a name, for example "Ford Transit (leased)".'];
         }
         $kind = $request->string('kind');
         $own = $request->string('ownership');

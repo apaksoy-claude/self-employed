@@ -11,7 +11,7 @@ $i ??= null;
     <input type="hidden" name="id" value="<?= (int) ($i['id'] ?? 0) ?>">
     <div class="mn-fields">
         <?= Fields::picker('invoice_id', 'Invoice', Money::invoiceChoices((int) ($i['invoice_id'] ?? 0)), $i['invoice_id'] ?? 0, ['none' => 'Not for an invoice', 'search' => 'Search by client, number, date or amount…', 'help' => 'Choose an invoice and this payment is counted against it. The client, stream and amount are filled in for you.']) ?>
-        <?= Fields::text('title', 'Where did it come from', $i['title'] ?? '', ['required' => true, 'maxlength' => 255, 'placeholder' => 'Uber weekly statement']) ?>
+        <?= Fields::text('title', 'Where did it come from', $i['title'] ?? '', ['required' => true, 'maxlength' => 255, 'placeholder' => 'Weekly platform payout']) ?>
         <?= Fields::text('income_date', 'Date received', Money::showDate($i['income_date'] ?? Money::today()), ['date' => true, 'col' => 'is-half']) ?>
         <?= Fields::text('amount', 'Amount (£)', $i ? number_format((float) $i['amount'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00']) ?>
         <?= Fields::select('stream_id', 'Stream', $streams, $i['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>

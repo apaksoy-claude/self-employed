@@ -172,7 +172,7 @@ final class GmailController
         return Response::json(['ok' => true, 'message' => 'Rule order saved']);
     }
 
-    /** Adds the ready-made rules (Heathrow drop-off fee and Otto invoices) to change as you like. */
+    /** Adds the example rules (parking receipts, supplier invoices, software subscriptions and fuel) to change as you like. */
     public function ruleStarters(Request $request): Response
     {
         $book = Gmail::book();

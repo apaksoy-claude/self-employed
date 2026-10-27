@@ -9,7 +9,7 @@ use AP\Core\Request;
 use AP\Core\Response;
 use AP\Modules\Money\Money;
 
-/** Income streams (Uber, private hire, software...). A stream in use is archived instead of removed. */
+/** Income streams (client work, online sales, rentals...). A stream in use is archived instead of removed. */
 final class StreamController
 {
     public function index(Request $request): Response

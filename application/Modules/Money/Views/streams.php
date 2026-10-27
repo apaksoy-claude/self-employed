@@ -4,7 +4,7 @@ $this->extend('admin::layout');
 ?>
 <?php $this->section('content'); ?>
 <div class="mn-page">
-<p class="text-muted">An income stream is a source of work, such as Uber, private hire or software. Give payments, invoices and costs a stream to see how each one is doing on the dashboard and in reports. Deleting a stream that is in use archives it: old records keep its name, but it is no longer offered for new ones.</p>
+<p class="text-muted">An income stream is a source of work, such as client work, online sales or a market stall. Give payments, invoices and costs a stream to see how each one is doing on the dashboard and in reports. Deleting a stream that is in use archives it: old records keep its name, but it is no longer offered for new ones.</p>
 <form method="post" action="<?= e(admin_url('money/streams/save')) ?>" data-unsaved-warning><?= csrf_field() ?>
     <div class="ap-section"><div class="table-responsive"><table class="table mb-0 align-middle">
         <thead><tr><th>Name</th><th>Colour</th><th class="text-center">Offered For New Records</th><th class="text-end">Payments</th><th class="text-end">Expenses</th><th class="text-end">Invoices</th><?php if ($canEdit): ?><th aria-label="Delete"></th><?php endif; ?></tr></thead><tbody>

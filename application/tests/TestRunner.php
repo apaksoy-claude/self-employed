@@ -1033,9 +1033,9 @@ final class TestRunner
             $db->pdo()->exec('CREATE TABLE ap_push_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, body TEXT, url TEXT, image TEXT, status TEXT, audience TEXT, total INTEGER DEFAULT 0, sent INTEGER DEFAULT 0, failed INTEGER DEFAULT 0, clicks INTEGER DEFAULT 0, created_by INTEGER, created_at TEXT, finished_at TEXT)');
             $A = \AP\Modules\Pwa\AppSite::class;
             $P = \AP\Modules\Pwa\Push::class;
-            $settings->set('general.site_name', 'Paksoy Bakery and Coffee');
+            $settings->set('general.site_name', 'Pinewood Bakery and Coffee');
             $man = $A::manifest();
-            $this->assert($man['name'] === 'Paksoy Bakery and Coffee' && $man['short_name'] === 'Paksoy Baker' && $man['display'] === 'standalone' && $man['icons'][0]['type'] === 'image/svg+xml', 'manifest wrong: ' . json_encode($man));
+            $this->assert($man['name'] === 'Pinewood Bakery and Coffee' && $man['short_name'] === 'Pinewood Bak' && $man['display'] === 'standalone' && $man['icons'][0]['type'] === 'image/svg+xml', 'manifest wrong: ' . json_encode($man));
             $this->assert(str_contains($A::fallbackSvg(), '>P</text>'), 'fallback icon must show the first letter');
             $this->assert($A::head() === '' && $A::bodyEnd() === '', 'nothing is added while the app is off');
             $settings->set('app.enabled', '1');

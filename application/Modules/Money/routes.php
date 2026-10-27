@@ -13,7 +13,6 @@ use AP\Modules\Money\Controllers\DashboardController;
 use AP\Modules\Money\Controllers\ExpenseController;
 use AP\Modules\Money\Controllers\FileController;
 use AP\Modules\Money\Controllers\GmailController;
-use AP\Modules\Money\Controllers\ImportController;
 use AP\Modules\Money\Controllers\IncomeController;
 use AP\Modules\Money\Controllers\InvoiceController;
 use AP\Modules\Money\Controllers\OverviewController;
@@ -170,8 +169,6 @@ return static function (Router $r): void {
             $r->post('/streams/{id:\d+}/delete', [StreamController::class, 'delete'], 'streams.delete');
             $r->post('/categories/{id:\d+}/delete', [CategoryController::class, 'delete'], 'categories.delete');
             $r->post('/files/{id:\d+}/delete', [FileController::class, 'delete'], 'file.delete');
-            $r->get('/import', [ImportController::class, 'index'], 'import');
-            $r->post('/import', [ImportController::class, 'run'], 'import.run');
         });
     });
 };

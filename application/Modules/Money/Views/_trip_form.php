@@ -17,7 +17,7 @@ $biz = old('business', $t['business'] ?? 1);
         <?= Fields::text('miles', 'Miles', $t ? rtrim(rtrim(number_format((float) $t['miles'], 1, '.', ''), '0'), '.') : '', ['col' => 'is-third', 'inputmode' => 'decimal', 'placeholder' => '0', 'help' => 'A whole day\'s total is fine.']) ?>
         <?= Fields::text('from_place', 'From', $t['from_place'] ?? '', ['col' => 'is-half', 'maxlength' => 190]) ?>
         <?= Fields::text('to_place', 'To', $t['to_place'] ?? '', ['col' => 'is-half', 'maxlength' => 190]) ?>
-        <?= Fields::text('purpose', 'Purpose', $t['purpose'] ?? '', ['maxlength' => 190, 'placeholder' => 'Airport transfers, waiting for pick-up…']) ?>
+        <?= Fields::text('purpose', 'Purpose', $t['purpose'] ?? '', ['maxlength' => 190, 'placeholder' => 'Client visit, collecting materials…']) ?>
         <?= Fields::text('odo_start', 'Odometer at start', $t['odo_start'] ?? ($last['odo_end'] ?? ''), ['col' => 'is-half', 'inputmode' => 'numeric', 'help' => 'Optional. With both readings, miles are worked out for you.']) ?>
         <?= Fields::text('odo_end', 'Odometer at end', $t['odo_end'] ?? '', ['col' => 'is-half', 'inputmode' => 'numeric']) ?>
         <?= \AP\Modules\Money\CustomFields::form('trip', (int) ($t['id'] ?? 0)) ?>

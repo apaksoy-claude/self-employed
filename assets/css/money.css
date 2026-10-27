@@ -225,7 +225,6 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .mn-bank tr.is-dup { opacity: .55; }
 .mn-bank select.form-select-sm { min-width: 14rem; }
 .mn-board-list { display: grid; gap: 1.25rem; margin-bottom: 1.25rem; }
-.mn-uber.is-dup { opacity: .6; }
 .mn-sub { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--mn-sub); margin: 1rem 0 .4rem; font-weight: 600; }
 .mn-sub:first-child { margin-top: 0; }
 

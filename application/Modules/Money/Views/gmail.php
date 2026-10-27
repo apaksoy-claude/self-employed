@@ -25,7 +25,7 @@ $this->extend('admin::layout');
         <header><div><h2>Email Rules</h2><p>A rule says which emails to pick up and what expense to make from them. The first rule that fits an email is used, so drag the most specific rules to the top.</p></div>
             <a class="btn btn-primary mn-btn" href="<?= e(admin_url('money/email-import/rules/new')) ?>" data-money-modal><i class="fa-solid fa-plus me-1"></i>Add A Rule</a></header>
         <?php if (!$book): ?>
-            <p class="text-muted">No rules yet. Add your own, or start from four examples (the Heathrow drop-off fee and three Otto invoice rules) and change them to suit.</p>
+            <p class="text-muted">No rules yet. Add your own, or start from four examples (parking receipts, supplier invoices with a PDF, software subscriptions and fuel receipts) and change them to suit.</p>
             <form method="post" action="<?= e(admin_url('money/email-import/rules/starters')) ?>"><?= csrf_field() ?><button class="btn btn-outline-primary mn-btn" type="submit"><i class="fa-solid fa-wand-magic-sparkles me-1"></i>Add Example Rules</button></form>
         <?php else: $idx = 0; ?>
         <div class="mn-rules" data-sortable data-sort-url="<?= e(admin_url('money/email-import/rules/order')) ?>"><?php foreach ($book as $r): $my = $r['on'] === '1' ? $idx++ : null; ?>

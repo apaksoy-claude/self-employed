@@ -13,7 +13,7 @@ $locked = !empty($locked);
     <h2 class="mn-form-title"><?= $v ? 'Change Vehicle' : 'New Vehicle' ?></h2>
     <input type="hidden" name="id" value="<?= (int) ($v['id'] ?? 0) ?>">
     <div class="mn-fields">
-        <?= Fields::text('name', 'Name', $v['name'] ?? '', ['required' => true, 'maxlength' => 120, 'placeholder' => 'Toyota Prius (Ottocar lease)', 'col' => 'is-half']) ?>
+        <?= Fields::text('name', 'Name', $v['name'] ?? '', ['required' => true, 'maxlength' => 120, 'placeholder' => 'Ford Transit (leased)', 'col' => 'is-half']) ?>
         <?= Fields::text('registration', 'Registration', $v['registration'] ?? '', ['maxlength' => 20, 'col' => 'is-half']) ?>
         <?= Fields::select('kind', 'Kind', Mileage::KINDS, $v['kind'] ?? 'car', ['col' => 'is-half']) ?>
         <?= Fields::select('ownership', 'How you have it', Mileage::OWNERSHIP, $v['ownership'] ?? 'owned', ['col' => 'is-half']) ?>
