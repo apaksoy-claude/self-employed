@@ -14,9 +14,17 @@ $i ??= null;
         <?= Fields::text('title', 'Where did it come from', $i['title'] ?? '', ['required' => true, 'maxlength' => 255, 'placeholder' => 'Weekly platform payout']) ?>
         <?= Fields::text('income_date', 'Date received', Money::showDate($i['income_date'] ?? Money::today()), ['date' => true, 'col' => 'is-half']) ?>
         <?= Fields::text('amount', 'Amount (£)', $i ? number_format((float) $i['amount'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00']) ?>
+        <?php if (\AP\Modules\Money\Cis::sub() || (float) ($i['cis_deducted'] ?? 0) != 0.0): ?>
+        <div class="mn-fields" data-no-invoice<?= (int) ($i['invoice_id'] ?? 0) > 0 ? ' hidden' : '' ?>>
+            <?= Fields::text('cis_deducted', 'CIS Taken Off (£)', (float) ($i['cis_deducted'] ?? 0) != 0.0 ? number_format((float) $i['cis_deducted'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00',
+                'help' => 'From the contractor\'s payment and deduction statement. The amount above is what reached you.']) ?>
+            <?= Fields::text('cis_materials', 'Of Which Materials (£)', (float) ($i['cis_materials'] ?? 0) != 0.0 ? number_format((float) $i['cis_materials'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00',
+                'help' => 'Materials on the statement, which have nothing taken off.']) ?>
+        </div>
+        <?php endif; ?>
         <?php if (\AP\Modules\Money\Vat::on()): ?>
-        <div class="mn-fields" data-vat-income<?= (int) ($i['invoice_id'] ?? 0) > 0 ? ' hidden' : '' ?>>
-            <?= Fields::select('vat_rate', 'VAT In It', \AP\Modules\Money\Vat::options($i['income_date'] ?? null), $i['vat_rate'] ?? (string) setting('money.vat_default', 'standard'), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'For money not paid against an invoice. Payments for invoices take the invoice\'s VAT.']) ?>
+        <div class="mn-fields" data-no-invoice<?= (int) ($i['invoice_id'] ?? 0) > 0 ? ' hidden' : '' ?>>
+            <?= Fields::select('vat_rate', 'VAT In It', \AP\Modules\Money\Vat::options($i['income_date'] ?? null, (string) ($i['vat_rate'] ?? '')), $i['vat_rate'] ?? (string) setting('money.vat_default', 'standard'), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'For money not paid against an invoice. Payments for invoices take the invoice\'s VAT.']) ?>
             <?= Fields::text('vat_amount', 'VAT Amount (£)', \AP\Modules\Money\Vat::formValue($i, 'income_date'), ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => 'Worked out for you']) ?>
         </div>
         <?php endif; ?>

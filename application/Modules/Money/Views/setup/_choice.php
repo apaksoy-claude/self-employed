@@ -55,6 +55,10 @@ $layoutCustom ??= false;
                 <input type="hidden" name="vehicle" value="0"><input class="form-check-input" type="checkbox" role="switch" name="vehicle" value="1"<?= $flag('vehicle') ? ' checked' : '' ?> data-touched="<?= !empty($vehicleTouched) || $hasOld ? '1' : '0' ?>">
                 <span><strong>I Use A Vehicle For Work</strong><small>Shows Vehicles and the Mileage Log, and adds running costs such as fuel, insurance and parking.</small></span>
             </label>
+            <label class="su-switch">
+                <input type="hidden" name="cis" value="0"><input class="form-check-input" type="checkbox" role="switch" name="cis" value="1"<?= $flag('cis') ? ' checked' : '' ?>>
+                <span><strong>Contractors Pay Me Under CIS</strong><small>For building work under the Construction Industry Scheme: invoices take the deduction off labour, and it comes off your tax bill.</small></span>
+            </label>
             <label class="su-switch" data-su-ready<?= $mode === 'fresh' ? ' hidden' : '' ?>>
                 <input type="hidden" name="home" value="0"><input class="form-check-input" type="checkbox" role="switch" name="home" value="1"<?= $flag('home') ? ' checked' : '' ?>>
                 <span><strong>I Work From Home</strong><small>Adds the business share of household bills, such as heating, broadband and council tax.</small></span>

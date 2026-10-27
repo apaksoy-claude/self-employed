@@ -156,9 +156,13 @@ final class AccountantPack
             $h .= '<h2>Estimated Tax (not a tax return)</h2><table>';
             $rows = ['Profit' . ($est['method'] === 'allowance' ? ' (using the trading allowance)' : '') => $est['profit'], 'Other taxable income' => $est['other_income'], 'Personal allowance' => $est['allowance'],
                 'Taxable income' => $est['taxable'], 'Income Tax' . ($est['region'] === 'scotland' ? ' (Scottish rates)' : '') => $est['income_tax'], 'Class 4 National Insurance' => $est['class4'],
-                'Voluntary Class 2' => $est['class2'], 'Total estimated tax' => $est['total']];
+                'Voluntary Class 2' => $est['class2']];
+            if ($est['cis'] > 0) {
+                $rows += ['Tax for the year' => $est['tax_all'], 'CIS taken off by contractors' => $est['cis'], 'Refund due' => $est['refund']];
+            }
+            $rows['Total estimated tax' . ($est['cis'] > 0 ? ' still to pay' : '')] = $est['total'];
             foreach ($rows as $label => $v) {
-                if ($v > 0 || in_array($label, ['Total estimated tax', 'Taxable income'], true)) {
+                if ($v > 0 || in_array($label, ['Total estimated tax', 'Total estimated tax still to pay', 'Taxable income'], true)) {
                     $h .= '<tr><td>' . e($label) . '</td><td class="r">' . $g((float) $v) . '</td></tr>';
                 }
             }

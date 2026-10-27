@@ -21,12 +21,20 @@ $rep = old('recurring', $e['recurring'] ?? 0);
                 <?= Fields::text('amount', 'Amount (£)', $e ? number_format((float) $e['amount'], 2, '.', '') : '', ['col' => 'is-third', 'inputmode' => 'decimal', 'placeholder' => '0.00']) ?>
                 <?= Fields::text('business_percent', 'Business use (%)', $pct, ['col' => 'is-third', 'inputmode' => 'decimal']) ?>
                 <?php if (\AP\Modules\Money\Vat::on()): ?>
-                <?= Fields::select('vat_rate', 'VAT On It', \AP\Modules\Money\Vat::options($e['expense_date'] ?? null), $e['vat_rate'] ?? str_replace('none', '', (string) setting('money.vat_cost_default', 'none')), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'As shown on the receipt.']) ?>
+                <?= Fields::select('vat_rate', 'VAT On It', \AP\Modules\Money\Vat::options($e['expense_date'] ?? null, (string) ($e['vat_rate'] ?? '')), $e['vat_rate'] ?? str_replace('none', '', (string) setting('money.vat_cost_default', 'none')), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'As shown on the receipt.']) ?>
                 <?= Fields::text('vat_amount', 'VAT Amount (£)', \AP\Modules\Money\Vat::formValue($e, 'expense_date'), ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => 'Worked out for you', 'help' => 'Only if the receipt shows a different figure.']) ?>
                 <?php endif; ?>
                 <?= Fields::select('category_id', 'Category', $cats, $e['category_id'] ?? 0, ['none' => 'No category', 'col' => 'is-half']) ?>
                 <?= Fields::select('stream_id', 'Stream', $streams, $e['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>
                 <?= Fields::select('contact_id', 'Paid to', $contacts, $e['contact_id'] ?? 0, ['none' => 'Nobody in particular', 'col' => 'is-third']) ?>
+                <?php if (\AP\Modules\Money\Cis::contractor() || (float) ($e['cis_deducted'] ?? 0) != 0.0): ?>
+                <div class="mn-fields mn-cis-box">
+                    <?= Fields::text('cis_deducted', 'CIS You Took Off (£)', (float) ($e['cis_deducted'] ?? 0) != 0.0 ? number_format((float) $e['cis_deducted'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00',
+                        'help' => 'Paying a subcontractor: the amount above is what you paid them. The deduction is paid to HMRC and counts as a cost too.']) ?>
+                    <?= Fields::text('cis_materials', 'Of Which Materials (£)', (float) ($e['cis_materials'] ?? 0) != 0.0 ? number_format((float) $e['cis_materials'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00',
+                        'help' => 'The materials they supplied, which have nothing taken off.']) ?>
+                </div>
+                <?php endif; ?>
                 <?php if (\AP\Modules\Money\Setup::usesVehicles() || (int) ($e['vehicle_id'] ?? 0) > 0): ?>
                 <?= Fields::select('vehicle_id', 'Vehicle', $vehicles, $e['vehicle_id'] ?? 0, ['none' => 'None', 'col' => 'is-third']) ?>
                 <?php else: ?><input type="hidden" name="vehicle_id" value="0"><?php endif; ?>

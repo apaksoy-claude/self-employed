@@ -69,6 +69,10 @@ final class ContactController
         $data = ['kind' => $kind, 'name' => mb_substr($name, 0, 190), 'email' => $email ?: null, 'phone' => $cut('phone', 40), 'address' => $cut('address', 255), 'city' => $cut('city', 100),
             'postcode' => $cut('postcode', 20), 'country' => $cut('country', 100), 'website' => $cut('website', 190), 'note' => trim($request->string('note')) ?: null,
             'active' => $request->bool('active') || $id === 0 ? 1 : 0, 'updated_at' => gmdate('Y-m-d H:i:s')];
+        if ($request->has('cis_rate')) {
+            $data['cis_rate'] = isset(\AP\Modules\Money\Cis::RATES[$request->string('cis_rate')]) ? $request->string('cis_rate') : '';
+            $data['cis_ref'] = $cut('cis_ref', 30);
+        }
         if ($id > 0) {
             $db->table('money_contacts')->where('id', $id)->first() ?? throw new HttpException(404);
             $db->table('money_contacts')->where('id', $id)->update($data);

@@ -47,8 +47,23 @@ final class Tax
         $est['method'] = $useAllowance ? 'allowance' : 'expenses';
         $est['profit_costs'] = $withCosts;
         $est['profit_allowance'] = $withAllowance;
+        self::takeOffCis($est, (float) ($t['cis'] ?? 0));
         $est['poa'] = self::paymentsOnAccount($year, $est, $r);
         return $est;
+    }
+
+    /**
+     * CIS taken off by contractors is tax already paid: it comes off the year's Income Tax and National Insurance, and anything over is
+     * paid back. "total" becomes what is left to pay; "tax_all" keeps the year's tax before it.
+     * @param array<string,mixed> $est
+     */
+    public static function takeOffCis(array &$est, float $cis): void
+    {
+        $cis = round(max(0.0, $cis), 2);
+        $est['tax_all'] = $est['total'];
+        $est['cis'] = $cis;
+        $est['refund'] = round(max(0.0, $cis - $est['total']), 2);
+        $est['total'] = round(max(0.0, $est['total'] - $cis), 2);
     }
 
     /**
@@ -115,15 +130,16 @@ final class Tax
     public static function paymentsOnAccount(string $year, array $est, array $r): array
     {
         $y = (int) substr($year, 0, 4);
-        $bill = round((float) $est['income_tax'] + (float) $est['class4'], 2);
+        $cis = (float) ($est['cis'] ?? 0);
+        $bill = round(max(0.0, (float) $est['income_tax'] + (float) $est['class4'] - $cis), 2);
         $all = (float) $est['income_tax_all'] + (float) $est['class4'];
-        $atSource = $all > 0 ? (float) $est['other_tax'] / $all * 100 : 0.0;
+        $atSource = $all > 0 ? ((float) $est['other_tax'] + $cis) / $all * 100 : 0.0;
         $needed = $bill >= (float) $r['poa_limit'] && $atSource < (float) $r['poa_source_share'];
         $reason = $needed ? '' : ($bill < (float) $r['poa_limit'] ? 'The bill is under ' . Money::gbp($r['poa_limit']) . ', so HMRC does not ask for payments on account.'
             : 'Most of your tax was taken off at source, so HMRC does not ask for payments on account.');
         $each = $needed ? round($bill / 2, 2) : 0.0;
         $paid = TaxRules::personal($year)['poa_paid'];
-        $balancing = round($bill + (float) $est['class2'] - $paid, 2);
+        $balancing = round((float) $est['income_tax'] + (float) $est['class4'] + (float) $est['class2'] - $cis - $paid, 2);
         return ['needed' => $needed, 'reason' => $reason, 'each' => $each, 'paid' => $paid, 'balancing' => $balancing, 'january' => round($balancing + $each, 2), 'july' => $each,
             'jan_date' => sprintf('%d-01-31', $y + 2), 'jul_date' => sprintf('%d-07-31', $y + 2)];
     }

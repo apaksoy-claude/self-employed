@@ -19,6 +19,11 @@ $c ??= null;
         <?= Fields::text('postcode', 'Postcode', $c['postcode'] ?? '', ['maxlength' => 20, 'col' => 'is-third']) ?>
         <?= Fields::text('country', 'Country', $c['country'] ?? '', ['maxlength' => 100, 'col' => 'is-third']) ?>
         <?= Fields::text('website', 'Website', $c['website'] ?? '', ['maxlength' => 190]) ?>
+        <?php if (\AP\Modules\Money\Cis::on() || (string) ($c['cis_rate'] ?? '') !== ''): ?>
+            <?= Fields::select('cis_rate', 'Construction Industry Scheme', \AP\Modules\Money\Cis::RATES, $c['cis_rate'] ?? '', ['none' => 'Not Under CIS', 'none_value' => '', 'col' => 'is-half',
+                'help' => 'A client who is a contractor: the rate they take off you, used for new invoices. A subcontractor you pay: the rate you take off them.']) ?>
+            <?= Fields::text('cis_ref', 'UTR Or Verification Number', $c['cis_ref'] ?? '', ['maxlength' => 30, 'col' => 'is-half', 'help' => 'For a subcontractor: their UTR, and the verification number HMRC gave you if they are taxed at 30%.']) ?>
+        <?php endif; ?>
         <?= Fields::area('note', 'Notes', $c['note'] ?? '') ?>
         <?= \AP\Modules\Money\CustomFields::form('contact', (int) ($c['id'] ?? 0)) ?>
     </div>

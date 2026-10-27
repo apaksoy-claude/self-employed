@@ -14,7 +14,10 @@ namespace AP\Modules\Money;
  */
 final class Vat
 {
-    public const CODES = ['standard' => 'Standard', 'reduced' => 'Reduced', 'zero' => 'Zero Rate', 'exempt' => 'Exempt', 'outside' => 'Outside The Scope Of VAT'];
+    public const CODES = ['standard' => 'Standard', 'reduced' => 'Reduced', 'zero' => 'Zero Rate', 'exempt' => 'Exempt', 'outside' => 'Outside The Scope Of VAT', 'reverse' => 'Reverse Charge (Construction)'];
+
+    /** What an invoice with reverse charge lines must say. */
+    public const REVERSE_NOTE = 'Reverse charge: customer to account for VAT to HMRC.';
 
     public const SCHEMES = ['standard' => 'Standard (Reclaim VAT On Costs)', 'flat' => 'Flat Rate Scheme'];
 
@@ -74,12 +77,18 @@ final class Vat
         };
     }
 
-    /** Choices for a VAT box, with the percentage: "Standard 20%". @return array<string,string> */
-    public static function options(?string $date = null): array
+    /**
+     * Choices for a VAT box, with the percentage: "Standard 20%". The construction reverse charge is offered to those working under CIS.
+     * @return array<string,string>
+     */
+    public static function options(?string $date = null, string $keep = ''): array
     {
         $date ??= Money::today();
         $out = [];
         foreach (self::CODES as $k => $label) {
+            if ($k === 'reverse' && $keep !== 'reverse' && !Cis::on()) {
+                continue;
+            }
             $p = self::percent($k, $date);
             $out[$k] = $label . (in_array($k, ['standard', 'reduced', 'zero'], true) ? ' ' . rtrim(rtrim(number_format($p, 2), '0'), '.') . '%' : '');
         }
@@ -106,10 +115,21 @@ final class Vat
         if ($code === '' || !isset(self::CODES[$code])) {
             return '';
         }
-        if (in_array($code, ['exempt', 'outside'], true)) {
-            return $code === 'exempt' ? 'Exempt' : 'No VAT';
+        if (in_array($code, ['exempt', 'outside', 'reverse'], true)) {
+            return ['exempt' => 'Exempt', 'outside' => 'No VAT', 'reverse' => 'Reverse Charge'][$code];
         }
         return rtrim(rtrim(number_format(self::percent($code, $date), 2), '0'), '.') . '%';
+    }
+
+    /** The reverse charge wording when any line of an invoice uses it, or an empty string. @param list<array<string,mixed>> $items */
+    public static function reverseNote(array $items): string
+    {
+        foreach ($items as $it) {
+            if ((string) ($it['vat_rate'] ?? '') === 'reverse') {
+                return self::REVERSE_NOTE;
+            }
+        }
+        return '';
     }
 
     /** The VAT registration number to print on invoices. */
@@ -181,8 +201,9 @@ final class Vat
     {
         if (self::$shares === null) {
             self::$shares = [];
-            foreach (Money::db()->table('money_invoices')->where('tax', '!=', 0)->select('id', 'tax', 'total')->get() as $i) {
-                self::$shares[(int) $i['id']] = ['tax' => (float) $i['tax'], 'total' => (float) $i['total']];
+            // A client under CIS pays the total less the deduction, so each payment carries VAT in proportion to that.
+            foreach (Money::db()->table('money_invoices')->where('tax', '!=', 0)->select('id', 'tax', 'total', 'cis')->get() as $i) {
+                self::$shares[(int) $i['id']] = ['tax' => (float) $i['tax'], 'total' => round((float) $i['total'] - (float) $i['cis'], 2)];
             }
         }
         return self::$shares;
@@ -202,12 +223,16 @@ final class Vat
         return round((float) ($row['vat_amount'] ?? 0), 2);
     }
 
-    /** What a payment adds to profit: without its VAT (standard scheme), or less the flat rate (Flat Rate Scheme). @param array<string,mixed> $row */
+    /**
+     * What a payment adds to profit: the money received plus any CIS the contractor took off for HMRC, without its VAT (standard scheme),
+     * or less the flat rate (Flat Rate Scheme).
+     * @param array<string,mixed> $row
+     */
     public static function incomeNet(array $row): float
     {
-        $amount = (float) $row['amount'];
+        $amount = (float) $row['amount'] + Cis::taken($row);
         if (!self::registeredOn((string) $row['income_date'])) {
-            return $amount;
+            return round($amount, 2);
         }
         if (self::scheme() === 'flat') {
             return round($amount - $amount * self::flatRate((string) $row['income_date']) / 100, 2);
@@ -228,10 +253,11 @@ final class Vat
         return round($vat * (float) ($row['business_percent'] ?? 100) / 100, 2);
     }
 
-    /** The business share of a cost, without VAT that is reclaimed. @param array<string,mixed> $row */
+    /** The business share of a cost, without VAT that is reclaimed, and with any CIS you took off a subcontractor (paid to HMRC for them). @param array<string,mixed> $row */
     public static function expenseNet(array $row, string $box = ''): float
     {
-        return round((float) $row['amount'] * (float) ($row['business_percent'] ?? 100) / 100 - self::reclaim($row, $box), 2);
+        $pay = (float) $row['amount'] + (float) ($row['cis_deducted'] ?? 0);
+        return round($pay * (float) ($row['business_percent'] ?? 100) / 100 - self::reclaim($row, $box), 2);
     }
 
     /** The day a period's return and payment are due: one month and seven days after it ends. */
@@ -293,10 +319,11 @@ final class Vat
                     continue;
                 }
                 $vat = self::incomeVat($r);
-                $gross += (float) $r['amount'];
-                $outVat += $flat ? (float) $r['amount'] * self::flatRate((string) $r['income_date']) / 100 : $vat;
-                $netSales += (float) $r['amount'] - $vat;
-                $sales[] = ['date' => (string) $r['income_date'], 'what' => (string) $r['title'], 'gross' => (float) $r['amount'], 'vat' => $vat];
+                $in = (float) $r['amount'] + Cis::taken($r);
+                $gross += $in;
+                $outVat += $flat ? $in * self::flatRate((string) $r['income_date']) / 100 : $vat;
+                $netSales += $in - $vat;
+                $sales[] = ['date' => (string) $r['income_date'], 'what' => (string) $r['title'], 'gross' => $in, 'vat' => $vat];
             }
         } else {
             foreach ($db->table('money_invoices')->whereNull('deleted_at')->whereIn('status', ['draft', 'cancelled'], 'AND', true)->where('issue_date', '>=', $from)->where('issue_date', '<=', $to)->get() as $i) {
@@ -313,10 +340,11 @@ final class Vat
                     continue;
                 }
                 $vat = round((float) $r['vat_amount'], 2);
-                $gross += (float) $r['amount'];
-                $outVat += $flat ? (float) $r['amount'] * self::flatRate((string) $r['income_date']) / 100 : $vat;
-                $netSales += (float) $r['amount'] - $vat;
-                $sales[] = ['date' => (string) $r['income_date'], 'what' => (string) $r['title'], 'gross' => (float) $r['amount'], 'vat' => $vat];
+                $in = (float) $r['amount'] + Cis::taken($r);
+                $gross += $in;
+                $outVat += $flat ? $in * self::flatRate((string) $r['income_date']) / 100 : $vat;
+                $netSales += $in - $vat;
+                $sales[] = ['date' => (string) $r['income_date'], 'what' => (string) $r['title'], 'gross' => $in, 'vat' => $vat];
             }
         }
         $boxes = $db->table('money_categories')->pluck('hmrc_box', 'id');
@@ -332,6 +360,13 @@ final class Vat
             $netBuys += self::expenseNet($e, $box);
             if ($re > 0) {
                 $buys[] = ['date' => (string) $e['expense_date'], 'what' => (string) $e['title'], 'gross' => (float) $e['amount'], 'vat' => $re];
+            }
+            // Construction services under the reverse charge: no VAT was charged, so you add it to box 1 and reclaim it in box 4 yourself.
+            if (!$flat && (string) ($e['vat_rate'] ?? '') === 'reverse') {
+                $rc = self::onNet((float) $e['amount'], 'standard', (string) $e['expense_date']);
+                $outVat += $rc;
+                $inVat += round($rc * (float) $e['business_percent'] / 100, 2);
+                $buys[] = ['date' => (string) $e['expense_date'], 'what' => $e['title'] . ' (reverse charge)', 'gross' => (float) $e['amount'], 'vat' => $rc];
             }
         }
         $b1 = round($outVat, 2);

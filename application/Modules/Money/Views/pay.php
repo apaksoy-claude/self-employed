@@ -13,6 +13,7 @@ if ($logo === '') {
 $title = (string) setting('money.pay_title', 'Pay Invoice');
 $canPay = $f['canPay'] && ($stripe || $paypal);
 $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
+$cisLine = \AP\Modules\Money\Cis::invoiceLine($inv);
 ?>
 <!doctype html>
 <html lang="en">
@@ -54,7 +55,7 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
         <?php elseif ($state === 'paid'): ?>
             <div class="pay-due is-paid"><span>Nothing to pay</span><strong>Paid in full, thank you</strong></div>
         <?php else: ?>
-            <div class="pay-due"><span><?= $f['paid'] > 0 ? 'Still to pay' : 'Amount due' ?></span><strong><?= $g($f['balance']) ?></strong><?php if ($f['paid'] > 0): ?><small><?= $g($f['paid']) ?> of <?= $g($inv['total']) ?> already paid</small><?php endif; ?></div>
+            <div class="pay-due"><span><?= $f['paid'] > 0 ? 'Still to pay' : 'Amount due' ?></span><strong><?= $g($f['balance']) ?></strong><?php if ($f['paid'] > 0): ?><small><?= $g($f['paid']) ?> of <?= $g(round((float) $inv['total'] - (float) ($inv['cis'] ?? 0), 2)) ?> already paid</small><?php endif; ?></div>
         <?php endif; ?>
 
         <div class="pay-parties">
@@ -68,7 +69,7 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
         <div class="pay-items" role="table" aria-label="Invoice items">
             <div class="pay-row is-head" role="row"><span role="columnheader">Item</span><span role="columnheader">Qty</span><span role="columnheader">Rate</span><span role="columnheader">Total</span></div>
             <?php foreach ($items as $it): ?>
-                <div class="pay-row" role="row"><span class="pay-item" role="cell"><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><em><?= nl2br(e((string) $it['description'])) ?></em><?php endif; ?><?php if ($vatShow && ($vl = \AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) !== ''): ?><em>VAT <?= e($vl) ?></em><?php endif; ?></span>
+                <div class="pay-row" role="row"><span class="pay-item" role="cell"><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><em><?= nl2br(e((string) $it['description'])) ?></em><?php endif; ?><?php if ($vatShow && ($vl = \AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) !== ''): ?><em>VAT <?= e($vl) ?></em><?php endif; ?><?php if ($cisLine !== '' && ($it['cis_kind'] ?? '') === 'materials'): ?><em>Materials</em><?php endif; ?></span>
                     <span role="cell"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?><?= $it['unit'] ? ' ' . e((string) $it['unit']) : '' ?></span><span role="cell"><?= $g($it['rate']) ?></span><span role="cell"><?= $g($it['total']) ?></span></div>
             <?php endforeach; ?>
         </div>
@@ -77,9 +78,11 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
             <?php if ((float) $inv['discount'] > 0): ?><div><dt>Discount</dt><dd>-<?= $g($inv['discount']) ?></dd></div><?php endif; ?>
             <?php if ($vatShow): ?><div><dt>VAT</dt><dd><?= $g($inv['tax']) ?></dd></div><?php endif; ?>
             <div class="is-big"><dt>Total</dt><dd><?= $g($inv['total']) ?></dd></div>
+            <?php if ($cisLine !== ''): ?><div><dt><?= e($cisLine) ?></dt><dd>-<?= $g($inv['cis']) ?></dd></div><?php endif; ?>
             <?php foreach ($payments as $p): ?><div><dt>Paid <?= e(Money::showDate((string) $p['income_date'])) ?><?= $p['payment_method'] ? ' · ' . e((string) $p['payment_method']) : '' ?></dt><dd>-<?= $g($p['amount']) ?></dd></div><?php endforeach; ?>
             <?php if ($f['paid'] > 0 || $f['canPay']): ?><div class="is-big"><dt>Balance due</dt><dd><?= $g($f['balance']) ?></dd></div><?php endif; ?>
         </dl>
+        <?php if (($rn = \AP\Modules\Money\Vat::reverseNote($items)) !== ''): ?><p class="pay-notes"><strong><?= e($rn) ?></strong></p><?php endif; ?>
         <?php if (trim((string) $inv['note']) !== ''): ?><p class="pay-notes"><?= nl2br(e((string) $inv['note'])) ?></p><?php endif; ?>
     </section>
 

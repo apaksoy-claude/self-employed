@@ -139,6 +139,8 @@ final class IncomeController
         $errors += \AP\Modules\Money\CustomFields::validate('income', $request);
         [$vat, $vatErrors] = \AP\Modules\Money\Vat::fromForm($request, $amount, $date);
         $errors += $vatErrors;
+        [$cis, $cisErrors] = $request->has('cis_deducted') ? \AP\Modules\Money\Cis::fromForm($request, $amount) : [[], []];
+        $errors += $cisErrors;
         if ($errors) {
             return Forms::fail($request, $errors, admin_url('money/income/' . ($id ?: 'new')));
         }
@@ -153,6 +155,10 @@ final class IncomeController
         if ($vat) {
             // A payment for an invoice takes its VAT from the invoice.
             $data += $invoiceId > 0 ? ['vat_rate' => '', 'vat_amount' => 0] : $vat;
+        }
+        if ($cis) {
+            // And its CIS too.
+            $data += $invoiceId > 0 ? ['cis_deducted' => 0, 'cis_materials' => 0] : $cis;
         }
         if ($id > 0) {
             $db->table('money_income')->where('id', $id)->whereNull('deleted_at')->first() ?? throw new HttpException(404);

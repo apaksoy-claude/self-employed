@@ -36,7 +36,9 @@ final class Statement
             if (in_array($inv['status'], ['draft', 'cancelled'], true)) {
                 continue;
             }
-            $events[] = ['date' => (string) $inv['issue_date'], 'order' => 0, 'kind' => 'invoice', 'ref' => (string) $inv['number'], 'note' => $inv['due_date'] ? 'Due ' . Money::showDate((string) $inv['due_date']) : '', 'debit' => (float) $inv['total'], 'credit' => 0.0];
+            $events[] = ['date' => (string) $inv['issue_date'], 'order' => 0, 'kind' => 'invoice', 'ref' => (string) $inv['number'],
+                'note' => trim(($inv['due_date'] ? 'Due ' . Money::showDate((string) $inv['due_date']) : '') . ((float) ($inv['cis'] ?? 0) > 0 ? ' · after ' . Money::gbp($inv['cis']) . ' CIS' : ''), ' ·'),
+                'debit' => round((float) $inv['total'] - (float) ($inv['cis'] ?? 0), 2), 'credit' => 0.0];
             $paid = 0.0;
             foreach ($db->table('money_income')->whereNull('deleted_at')->where('invoice_id', (int) $inv['id'])->orderBy('income_date')->orderBy('id')->get() as $p) {
                 $events[] = ['date' => (string) $p['income_date'], 'order' => 1, 'kind' => 'payment', 'ref' => (string) $inv['number'], 'note' => (string) ($p['payment_method'] ?: 'Payment'), 'debit' => 0.0, 'credit' => (float) $p['amount']];

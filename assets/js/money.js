@@ -496,9 +496,8 @@ document.addEventListener('click', function (ev) {
         fill(form, 'contact_id', it.getAttribute('data-contact'), true); fill(form, 'stream_id', it.getAttribute('data-stream'), true);
         fill(form, 'amount', it.getAttribute('data-balance'), true); fill(form, 'title', it.getAttribute('data-title'), true);
       }
-      // A payment for an invoice takes the invoice's VAT, so its own VAT boxes only show when no invoice is chosen.
-      var vb = form ? form.querySelector('[data-vat-income]') : null;
-      if (vb) { vb.hidden = (it.getAttribute('data-value') || '0') !== '0'; }
+      // A payment for an invoice takes the invoice's VAT and CIS, so its own boxes for them only show when no invoice is chosen.
+      if (form) { form.querySelectorAll('[data-no-invoice]').forEach(function (vb) { vb.hidden = (it.getAttribute('data-value') || '0') !== '0'; }); }
       return;
     }
     if (!t.closest('[data-pick]')) { closeAll(); }
@@ -618,4 +617,14 @@ document.addEventListener('bg-saved', function (e) {
   var holder = document.createElement('div');
   holder.innerHTML = j.nav;
   if (holder.firstElementChild) { nav.replaceWith(holder.firstElementChild); }
+});
+
+// New invoice: choosing a client who is a CIS contractor picks the rate they take off.
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (!t.matches || !t.matches('select[name="contact_id"]')) { return; }
+  var form = t.form, holder = form ? form.querySelector('[data-cis-map]') : null, rate = form ? form.querySelector('select[name="cis_rate"]') : null;
+  if (!holder || !rate) { return; }
+  var map = {}; try { map = JSON.parse(holder.getAttribute('data-cis-map') || '{}'); } catch (err) { map = {}; }
+  rate.value = Object.prototype.hasOwnProperty.call(map, t.value) ? map[t.value] : '';
 });

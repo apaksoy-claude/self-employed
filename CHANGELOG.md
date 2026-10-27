@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.42.0 - CIS for builders
+Update package: install from System > Updates, then press "Finish update" (adds CIS columns and a table for monthly notes).
+- New page: Settings > CIS. Say contractors pay you under the Construction Industry Scheme and at what rate (20%, 30% or gross payment status), and whether you pay subcontractors under CIS, with your employer's reference for their statements. Business Setup and the installer ask about CIS too.
+- Clients and Suppliers: mark a client as a CIS contractor (with the rate they take off) or a supplier as a subcontractor you pay (with their UTR or verification number).
+- Invoices: choose the CIS rate (picked for you from the client), and mark each line as labour or materials. The deduction is worked out on the labour after any discount, never on materials or VAT, and shown on the invoice page, the PDF and the pay page. The client is asked for the total less the deduction, and paying that settles the invoice. Statements to clients show the same.
+- Payments with no invoice have CIS Taken Off and Materials boxes, filled from the contractor's statement.
+- Your income now counts the full amount before CIS, and the deductions come off your tax on the Tax Estimate as tax already paid, with "Left To Pay After CIS" or the refund HMRC owes you, payments on account worked out after them, and the same on the dashboard and in the accountant pack.
+- Paying subcontractors: expenses have CIS You Took Off and Materials boxes; the cost is what they were paid plus the deduction.
+- New page: Money > CIS. The tax months of the year (6th to 5th) down the left. For each: what each contractor paid you and took off, with a check of the rate and a tick when their statement arrives; what you paid each subcontractor and took off, a payment and deduction statement to print for each, what to pay HMRC by the 22nd, and your monthly return to mark as filed by the 19th. A CSV of the whole year. The dashboard reminds you of each return from the first month you pay a subcontractor.
+- VAT: the construction reverse charge is now a VAT choice for those under CIS. The invoice adds no VAT and says "Reverse charge: customer to account for VAT to HMRC"; reverse charge costs add the VAT to box 1 and box 4 of your return. A client paying under CIS pays the VAT in full, as it is never part of the deduction.
+- Report downloads include CIS columns when you use CIS.
+- Tests: Money 62, core 65.
+
 ## 1.41.0 - VAT
 Update package: install from System > Updates, then press "Finish update" (adds VAT columns and a table for filed returns).
 - New page: Settings > VAT. Say you are registered, your VAT number (printed on invoices), the date you registered from (records before it have no VAT), your VAT periods (three quarter patterns or monthly), your scheme (standard or Flat Rate, with your flat rate, the limited cost trader rate and 1% off in the first year), cash accounting, and the starting VAT for new invoice lines and new expenses. Only the settings that apply are shown.

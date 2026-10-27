@@ -19,7 +19,7 @@ final class SetupController
             return Money::notReady();
         }
         $saved = Setup::saved();
-        $choice = ['mode' => 'ready', 'trades' => (array) ($saved['trades'] ?? []), 'vehicle' => Setup::usesVehicles(), 'home' => !empty($saved['home']),
+        $choice = ['mode' => 'ready', 'trades' => (array) ($saved['trades'] ?? []), 'vehicle' => Setup::usesVehicles(), 'cis' => \AP\Modules\Money\Cis::sub(), 'home' => !empty($saved['home']),
             'dashboard' => (string) setting(Widgets::SETTING, '') === ''];
         return view('money::setup/page', ['title' => 'Business Setup', 'breadcrumbs' => ['Money' => admin_url('money/invoices'), 'Business Setup' => null],
             'choice' => $choice, 'saved' => $saved, 'planJson' => Setup::planData(Setup::existing(Money::db(), settings())), 'layoutCustom' => (string) setting(Widgets::SETTING, '') !== '']);

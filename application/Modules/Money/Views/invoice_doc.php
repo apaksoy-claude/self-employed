@@ -12,6 +12,7 @@ $paid = (float) $f['paid'];
 $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
 $vatNo = $vatShow ? \AP\Modules\Money\Vat::number() : '';
 $cols = ($L['qty'] ? 4 : 2) + ($vatShow ? 1 : 0);
+$cisLine = \AP\Modules\Money\Cis::invoiceLine($inv);
 ?>
 <!doctype html>
 <html lang="en">
@@ -48,7 +49,7 @@ $cols = ($L['qty'] ? 4 : 2) + ($vatShow ? 1 : 0);
         <thead><tr><th>Item</th><?php if ($L['qty']): ?><th class="r">Quantity</th><th class="r">Rate</th><?php endif; ?><?php if ($vatShow): ?><th class="r">VAT</th><?php endif; ?><th class="r">Total</th></tr></thead>
         <tbody>
         <?php foreach ($items as $it): ?>
-            <tr><td><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><div class="doc-desc"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
+            <tr><td><strong><?= e((string) $it['title']) ?></strong><?php if ($cisLine !== '' && ($it['cis_kind'] ?? '') === 'materials'): ?> <em class="doc-tag">Materials</em><?php endif; ?><?php if ($it['description']): ?><div class="doc-desc"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
                 <?php if ($L['qty']): ?><td class="r"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?> <?= e((string) $it['unit']) ?></td>
                 <td class="r"><?= $g($it['rate']) ?></td><?php endif; ?><?php if ($vatShow): ?><td class="r"><?= e(\AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) ?></td><?php endif; ?><td class="r"><?= $g($it['total']) ?></td></tr>
         <?php endforeach; ?>
@@ -60,6 +61,7 @@ $cols = ($L['qty'] ? 4 : 2) + ($vatShow ? 1 : 0);
         <?php if ((float) $inv['discount'] > 0): ?><div><span>Discount</span><strong>-<?= $g($inv['discount']) ?></strong></div><?php endif; ?>
         <?php if ($vatShow): ?><div><span>VAT</span><strong><?= $g($inv['tax']) ?></strong></div><?php endif; ?>
         <div><span>Total</span><strong><?= $g($inv['total']) ?></strong></div>
+        <?php if ($cisLine !== ''): ?><div><span><?= e($cisLine) ?></span><strong>-<?= $g($inv['cis']) ?></strong></div><?php endif; ?>
         <div><span>Paid</span><strong><?= $g($paid) ?></strong></div>
         <div class="is-due"><span><?= e($L['due']) ?></span><strong><?= $g($f['balance']) ?></strong></div>
     </section>
@@ -68,6 +70,7 @@ $cols = ($L['qty'] ? 4 : 2) + ($vatShow ? 1 : 0);
         <?php foreach ($payments as $p): ?><div><span><?= e(Money::showDate((string) $p['income_date'])) ?> · <?= e((string) ($p['payment_method'] ?: 'Payment')) ?></span><strong><?= $g($p['amount']) ?></strong></div><?php endforeach; ?>
     </section>
     <?php endif; ?>
+    <?php if (($rn = \AP\Modules\Money\Vat::reverseNote($items)) !== ''): ?><p class="doc-extra"><strong><?= e($rn) ?></strong></p><?php endif; ?>
     <section class="doc-foot">
         <?php if ($inv['note'] && $L['notes']): ?><div><small>Note</small><p><?= nl2br(e((string) $inv['note'])) ?></p></div><?php endif; ?>
         <?php if ($bank !== '' && $f['canPay'] && $L['bank']): ?><div><small>Bank Details</small><p><?= nl2br(e($bank)) ?></p><p>Reference: <strong><?= e((string) $inv['number']) ?></strong></p></div><?php endif; ?>

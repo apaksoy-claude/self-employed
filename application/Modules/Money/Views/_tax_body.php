@@ -25,7 +25,11 @@ $amt = static fn($v): string => (float) $v > 0 ? number_format((float) $v, 2, '.
         <section class="mn-card mn-kpi"><span><?= $est['method'] === 'expenses' && $est['profit_costs'] < 0 ? 'Loss (No Tax)' : 'Profit' ?></span><strong><?= $g($est['method'] === 'expenses' ? $est['profit_costs'] : $est['profit']) ?></strong><small><?= $est['method'] === 'allowance' ? 'Income ' . $g($t['income']) . ' minus the ' . $g($rates['trading_allowance']) . ' trading allowance' : 'Income ' . $g($t['income']) . ' minus costs ' . $g($t['costs']) ?></small></section>
         <section class="mn-card mn-kpi"><span>Income Tax</span><strong><?= $g($est['income_tax']) ?></strong><small>On <?= $g($est['taxable']) ?> after your allowance<?= $est['other_tax'] > 0 ? ', less ' . $g($est['other_tax']) . ' already taken off' : '' ?></small></section>
         <section class="mn-card mn-kpi"><span>National Insurance</span><strong><?= $g($est['class4'] + $est['class2']) ?></strong><small>Class 4 on profits above <?= $g($rates['c4_lower']) ?><?= $est['class2'] > 0 ? ', plus voluntary Class 2' : '' ?></small></section>
+        <?php if (($est['cis'] ?? 0) > 0): ?>
+        <section class="mn-card mn-kpi is-main"><span><?= $est['refund'] > 0 ? 'HMRC Owes You About' : 'Left To Pay After CIS' ?></span><strong><?= $g($est['refund'] > 0 ? $est['refund'] : $est['total']) ?></strong><small>Tax for the year <?= $g($est['tax_all']) ?>, less <?= $g($est['cis']) ?> CIS contractors took off for HMRC</small></section>
+        <?php else: ?>
         <section class="mn-card mn-kpi is-main"><span>Total Tax Due</span><strong><?= $g($est['total']) ?></strong><small><?= $pc($est['effective']) ?> of profit · about £<?= e(number_format($perHundred, 2)) ?> from every £100 coming in</small></section>
+        <?php endif; ?>
     </div>
 
     <div class="mn-grid mn-g-wide">
@@ -64,7 +68,7 @@ $amt = static fn($v): string => (float) $v > 0 ? number_format((float) $v, 2, '.
         <section class="mn-card">
             <header><div><h2>When To Pay</h2><p>For <?= e($year) ?>, if you send your return on time</p></div></header>
             <ul class="tx-timeline">
-                <li><div><strong><?= e(Money::showDate($poa['jan_date'])) ?></strong><small>Balance for <?= e($year) ?><?= $poa['paid'] > 0 ? ' (after ' . $g($poa['paid']) . ' already paid on account)' : '' ?><?= $poa['needed'] ? ', plus the first payment on account for the next year' : '' ?></small></div><strong><?= $g(max(0, $poa['january'])) ?></strong></li>
+                <li><div><strong><?= e(Money::showDate($poa['jan_date'])) ?></strong><small>Balance for <?= e($year) ?><?= $poa['paid'] > 0 ? ' (after ' . $g($poa['paid']) . ' already paid on account)' : '' ?><?= ($est['cis'] ?? 0) > 0 ? ', after ' . $g($est['cis']) . ' CIS taken off' : '' ?><?= $poa['needed'] ? ', plus the first payment on account for the next year' : '' ?><?= $poa['january'] < 0 ? '. HMRC pays back the difference once your return is in' : '' ?></small></div><strong><?= $poa['january'] < 0 ? 'Refund ' . $g(-$poa['january']) : $g($poa['january']) ?></strong></li>
                 <?php if ($poa['needed']): ?><li><div><strong><?= e(Money::showDate($poa['jul_date'])) ?></strong><small>Second payment on account for the next year</small></div><strong><?= $g($poa['july']) ?></strong></li><?php endif; ?>
             </ul>
             <p class="mn-foot"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> <?= $poa['needed'] ? 'Payments on account are half of this year\'s bill each, paid towards next year. Setting money aside each month keeps January easy.' : e($poa['reason']) ?></p>

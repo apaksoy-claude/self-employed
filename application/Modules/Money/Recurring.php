@@ -119,7 +119,7 @@ final class Recurring
                     $status = (string) setting('money.recurring_status', 'sent') === 'draft' ? 'draft' : 'sent';
                     $id = $db->table('money_invoices')->insertGetId(['number' => Money::nextInvoiceNumber(), 'contact_id' => (int) $t['contact_id'], 'stream_id' => (int) $t['stream_id'],
                         'issue_date' => $next, 'due_date' => $offset === null ? null : date('Y-m-d', (int) strtotime($next . " +{$offset} days")), 'status' => $status, 'note' => $t['note'],
-                        'subtotal' => 0, 'discount' => $t['discount'], 'tax' => $t['tax'], 'total' => 0, 'parent_id' => (int) $t['id'], 'created_at' => $now, 'updated_at' => $now]);
+                        'subtotal' => 0, 'discount' => $t['discount'], 'tax' => $t['tax'], 'total' => 0, 'cis_rate' => (string) ($t['cis_rate'] ?? ''), 'parent_id' => (int) $t['id'], 'created_at' => $now, 'updated_at' => $now]);
                     foreach ($db->table('money_invoice_items')->where('invoice_id', (int) $t['id'])->orderBy('sort_order')->orderBy('id')->get() as $it) {
                         unset($it['id']);
                         $it['invoice_id'] = $id;

@@ -17,7 +17,12 @@ $inv ??= null;
         <?= Fields::text('due_date', 'Due date', Money::showDate($inv['due_date'] ?? ($inv ? null : $due)), ['date' => true, 'col' => 'is-half']) ?>
         <?= Fields::select('contact_id', 'Client', $contacts, $inv['contact_id'] ?? 0, ['none' => 'No client yet', 'col' => 'is-half']) ?>
         <?= Fields::text('new_client', 'Or add a new client', '', ['col' => 'is-half', 'placeholder' => 'Client name', 'maxlength' => 190]) ?>
-        <?= Fields::select('stream_id', 'Income source', $streams, $inv['stream_id'] ?? 0, ['none' => 'Not assigned']) ?>
+        <?= Fields::select('stream_id', 'Income source', $streams, $inv['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => \AP\Modules\Money\Cis::sub() || (string) ($inv['cis_rate'] ?? '') !== '' ? 'is-half' : '']) ?>
+        <?php if (\AP\Modules\Money\Cis::sub() || (string) ($inv['cis_rate'] ?? '') !== ''): ?>
+            <?= Fields::select('cis_rate', 'CIS', ['20' => 'Contractor Takes Off 20%', '30' => 'Contractor Takes Off 30%', '0' => 'Gross Payment Status: Nothing Taken Off'], $inv['cis_rate'] ?? '',
+                ['none' => 'Not Under CIS', 'none_value' => '', 'col' => 'is-half', 'help' => 'When the client is a contractor under the Construction Industry Scheme. The deduction is worked out on the labour, not materials or VAT.']) ?>
+            <?php if (!$inv): ?><div hidden data-cis-map="<?= e((string) json_encode($cisMap ?? [], JSON_FORCE_OBJECT)) ?>"></div><?php endif; ?>
+        <?php endif; ?>
         <?= Fields::area('note', 'Note', $inv['note'] ?? '') ?>
         <?= \AP\Modules\Money\CustomFields::form('invoice', (int) ($inv['id'] ?? 0)) ?>
     </div>

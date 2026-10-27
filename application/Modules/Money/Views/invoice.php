@@ -12,6 +12,7 @@ $balance = max(0.0, Money::invoiceBalance($inv, $paid));
 $modal = Money::modalAttr();
 $editable = $canEdit && $state !== 'cancelled';
 $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
+$cisLine = \AP\Modules\Money\Cis::invoiceLine($inv);
 ?>
 <?php $this->section('actions'); ?>
 <?php if ($canEdit): ?>
@@ -65,7 +66,7 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
             <?php foreach ($items as $it): ?>
                 <tr data-id="<?= (int) $it['id'] ?>"<?= $editable ? ' draggable="true"' : '' ?>>
                     <td class="mn-handle mn-noprint"><?php if ($editable): ?><i class="fa-solid fa-grip-vertical" aria-hidden="true" title="Drag to reorder"></i><?php endif; ?></td>
-                    <td><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><div class="small text-muted"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
+                    <td><strong><?= e((string) $it['title']) ?></strong><?php if ($cisLine !== '' && ($it['cis_kind'] ?? '') === 'materials'): ?> <span class="mn-chip mn-chip-mute">Materials</span><?php endif; ?><?php if ($it['description']): ?><div class="small text-muted"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
                     <td class="text-end text-nowrap"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?> <?= e((string) $it['unit']) ?></td>
                     <td class="text-end text-nowrap"><?= $g($it['rate']) ?></td><?php if ($vatShow): ?><td class="text-end text-nowrap"><?= e(\AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) ?></td><?php endif; ?><td class="text-end text-nowrap"><?= $g($it['total']) ?></td>
                     <td class="text-end mn-noprint text-nowrap"><?php if ($editable): ?>
@@ -86,9 +87,11 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
                 <input class="form-control" name="discount" value="<?= e(number_format((float) $inv['discount'], 2, '.', '')) ?>" inputmode="decimal" aria-label="Discount in pounds"><button class="btn btn-primary btn-sm mn-btn" type="submit">Save</button></form><?php endif; ?>
             <?php if ($vatShow): ?><div><span>VAT</span><strong><?= $g($inv['tax']) ?></strong></div><?php endif; ?>
             <div class="is-big"><span>Total</span><strong><?= $g($inv['total']) ?></strong></div>
+            <?php if ($cisLine !== ''): ?><div><span><?= e($cisLine) ?></span><strong>-<?= $g($inv['cis']) ?></strong></div><?php endif; ?>
             <div><span>Paid</span><strong><?= $g($paid) ?></strong></div>
             <div class="is-big"><span>Balance due</span><strong><?= $g($balance) ?></strong></div>
         </div>
+        <?php if (($rn = \AP\Modules\Money\Vat::reverseNote($items)) !== ''): ?><p class="mn-paper-note"><strong><?= e($rn) ?></strong></p><?php endif; ?>
         <?php if ($inv['note']): ?><p class="mn-paper-note"><?= nl2br(e((string) $inv['note'])) ?></p><?php endif; ?>
         <?php if ($biz['footer'] !== ''): ?><p class="mn-paper-note"><?= e($biz['footer']) ?></p><?php endif; ?>
     </section>
@@ -105,6 +108,7 @@ $vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
                 <?php if ((int) $inv['parent_id'] > 0): ?><div><span>Made from</span><strong><a href="<?= e(admin_url('money/invoices/' . (int) $inv['parent_id'])) ?>">its repeating invoice</a></strong></div><?php endif; ?>
                 <div><span>Income source</span><strong><?= e((string) $stream) ?: '—' ?></strong></div>
                 <div><span>Total</span><strong><?= $g($inv['total']) ?></strong></div>
+                <?php if ($cisLine !== ''): ?><div><span>CIS taken off</span><strong>-<?= $g($inv['cis']) ?></strong></div><?php endif; ?>
                 <div class="mn-total"><span>Balance due</span><strong><?= $g($balance) ?></strong></div>
             </div>
         </section>

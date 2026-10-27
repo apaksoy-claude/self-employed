@@ -48,7 +48,7 @@ final class Setup
         return [
             'mode' => $request->string('mode') === 'fresh' ? 'fresh' : 'ready',
             'trades' => Trades::clean((array) $request->input('trades', [])),
-            'vehicle' => $on('vehicle'), 'home' => $on('home'), 'dashboard' => $on('dashboard'), 'skip' => $skip,
+            'vehicle' => $on('vehicle'), 'home' => $on('home'), 'dashboard' => $on('dashboard'), 'cis' => $on('cis'), 'skip' => $skip,
             'business' => $withBusiness ? ['name' => mb_substr(trim($request->string('biz_name')), 0, 120), 'email' => mb_substr(mb_strtolower(trim($request->string('biz_email'))), 0, 190)] : null,
         ];
     }
@@ -183,6 +183,9 @@ final class Setup
         }
         $vehicle = !empty($choice['vehicle']);
         $settings->set('money.feature_vehicles', $vehicle ? '1' : '0', $userId);
+        if (array_key_exists('cis', $choice)) {
+            $settings->set('money.cis_sub', !empty($choice['cis']) ? '1' : '0', $userId);
+        }
         $biz = (array) ($choice['business'] ?? []);
         foreach (['name', 'email'] as $k) {
             if (trim((string) ($biz[$k] ?? '')) !== '') {

@@ -31,7 +31,9 @@ final class Dashboard
                 $days = (int) (new DateTimeImmutable($from))->diff(new DateTimeImmutable($today))->format('%a') + 1;
                 if ($days >= 45) {
                     $pp = round($t['profit'] / $days * 365, 2);
-                    $card['projected'] = ['profit' => $pp, 'tax' => Tax::estimate($pp, $relief ? $t['pension'] / $days * 365 * 1.25 : 0.0, Tax::rates($y), Tax::options($y))];
+                    $ptax = Tax::estimate($pp, $relief ? $t['pension'] / $days * 365 * 1.25 : 0.0, Tax::rates($y), Tax::options($y));
+                    Tax::takeOffCis($ptax, ($t['cis'] ?? 0) / $days * 365);
+                    $card['projected'] = ['profit' => $pp, 'tax' => $ptax];
                 }
             }
             return $card;

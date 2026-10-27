@@ -152,7 +152,8 @@ final class InvoiceController
         $inv = (int) $id > 0 ? $this->find((int) $id) : null;
         $terms = (int) setting('money.terms_days', 0);
         return Forms::page($request, 'money::_invoice_form', ['inv' => $inv, 'today' => Money::today(), 'due' => date('Y-m-d', (int) strtotime(Money::today() . " +{$terms} days")),
-            'number' => Money::nextInvoiceNumber(), 'contacts' => Money::options('money_contacts'), 'streams' => Money::options('money_streams')],
+            'number' => Money::nextInvoiceNumber(), 'contacts' => Money::options('money_contacts'), 'streams' => Money::options('money_streams'),
+            'cisMap' => array_map('strval', Money::db()->table('money_contacts')->where('cis_rate', '!=', '')->pluck('cis_rate', 'id'))],
             $inv ? 'Change Invoice' : 'New Invoice', ['Money' => admin_url('money/invoices'), 'Invoices' => admin_url('money/invoices'), ($inv ? 'Change' : 'New') => null]);
     }
 
@@ -204,12 +205,15 @@ final class InvoiceController
         $data = ['number' => mb_substr($number, 0, 40), 'recurring' => $repeat ? 1 : 0, 'auto_email' => $repeat && $request->bool('auto_email') ? 1 : 0, 'repeat_every' => $repeat ? $every : 0, 'repeat_unit' => $repeat ? $unit : null,
             'next_date' => $repeat ? $next : null, 'max_cycles' => $repeat ? max(0, $request->int('max_cycles')) : 0, 'repeat_until' => $repeat && trim($request->string('repeat_until')) !== '' ? Money::parseDate($request->string('repeat_until')) : null, 'contact_id' => $contact, 'stream_id' => $request->int('stream_id'), 'issue_date' => $issue, 'due_date' => $due,
             'note' => trim($request->string('note')) ?: null, 'updated_at' => gmdate('Y-m-d H:i:s')];
+        if ($request->has('cis_rate')) {
+            $data['cis_rate'] = isset(\AP\Modules\Money\Cis::RATES[$request->string('cis_rate')]) ? $request->string('cis_rate') : '';
+        }
         if ($id > 0) {
             $old = $this->find($id);
             $data['status'] = $old['status'] === 'cancelled' ? 'cancelled' : $status;
             $db->table('money_invoices')->where('id', $id)->update($data);
-            if ((string) $old['issue_date'] !== (string) $issue) {
-                Money::recalcInvoice($id); // VAT follows the bill date (registration date, rates of the tax year).
+            if ((string) $old['issue_date'] !== (string) $issue || (string) ($old['cis_rate'] ?? '') !== (string) ($data['cis_rate'] ?? $old['cis_rate'] ?? '')) {
+                Money::recalcInvoice($id); // VAT follows the bill date (registration date, rates of the tax year), and CIS its rate.
             }
         } else {
             $data += ['status' => $status, 'subtotal' => 0, 'discount' => 0, 'tax' => 0, 'total' => 0, 'created_at' => $data['updated_at']];
@@ -364,6 +368,9 @@ final class InvoiceController
         if (\AP\Modules\Money\Vat::on()) {
             $code = $request->string('vat_rate');
             $data['vat_rate'] = isset(\AP\Modules\Money\Vat::CODES[$code]) ? $code : '';
+        }
+        if ((string) ($inv['cis_rate'] ?? '') !== '') {
+            $data['cis_kind'] = $request->string('cis_kind') === 'materials' ? 'materials' : 'labour';
         }
         $itemId = $request->int('item_id');
         if ($itemId > 0) {

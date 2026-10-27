@@ -483,3 +483,10 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .vt-watch, .vt-rules { margin-bottom: 1rem; }
 @media (max-width: 640px) { .vt-list li { grid-template-columns: 2.1rem minmax(0, 1fr); } .vt-amt { grid-column: 2; text-align: left; } }
 @media print { .vt-page .mn-sidenav, .vt-file, .vt-actions, .vt-page .mn-head .btn { display: none !important; } .vt-page .mn-menupage { grid-template-columns: 1fr; } .vt-lines { break-inside: avoid; } }
+
+/* Money > CIS */
+.cs-page .mn-sidenav a.is-later { opacity: .55; }
+.cs-page .mn-sidenav a span { font-size: .84rem; }
+.cs-page .mn-head .vt-actions { align-items: flex-end; }
+.cs-kpis:empty { display: none; }
+.mn-cis-box { padding: .8rem .9rem .2rem; border-radius: 12px; background: #F5F6FA; }

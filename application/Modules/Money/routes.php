@@ -7,6 +7,7 @@ use AP\Modules\Money\Controllers\AssetController;
 use AP\Modules\Money\Controllers\ButtonController;
 use AP\Modules\Money\Controllers\CardStyleController;
 use AP\Modules\Money\Controllers\CategoryController;
+use AP\Modules\Money\Controllers\CisController;
 use AP\Modules\Money\Controllers\ContactController;
 use AP\Modules\Money\Controllers\CustomFieldController;
 use AP\Modules\Money\Controllers\StreamController;
@@ -57,6 +58,9 @@ return static function (Router $r): void {
         $r->get('/tax', [TaxController::class, 'index'], 'tax');
         $r->get('/vat', [VatController::class, 'index'], 'vat');
         $r->get('/vat/csv', [VatController::class, 'csv'], 'vat.csv');
+        $r->get('/cis', [CisController::class, 'index'], 'cis');
+        $r->get('/cis/csv', [CisController::class, 'csv'], 'cis.csv');
+        $r->get('/cis/statement', [CisController::class, 'statement'], 'cis.statement');
         $r->get('/reports', [ReportController::class, 'index'], 'reports');
         $r->get('/reports/email', [ReportController::class, 'emailForm'], 'reports.email');
         $r->get('/reports/export/{what:[a-z]+}', [ReportController::class, 'export'], 'reports.export');
@@ -125,6 +129,7 @@ return static function (Router $r): void {
             $r->post('/tax/figures', [TaxController::class, 'savePersonal'], 'tax.figures');
             $r->post('/vat/file', [VatController::class, 'file'], 'vat.file');
             $r->post('/vat/unfile', [VatController::class, 'unfile'], 'vat.unfile');
+            $r->post('/cis/mark', [CisController::class, 'mark'], 'cis.mark');
             $r->get('/equipment/new', [AssetController::class, 'form'], 'equipment.new');
             $r->get('/equipment/{id:\d+}', [AssetController::class, 'form'], 'equipment.edit');
             $r->post('/equipment/save', [AssetController::class, 'save'], 'equipment.save');

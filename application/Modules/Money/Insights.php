@@ -17,16 +17,15 @@ final class Insights
             $cats[(int) $c['id']] = [(string) $c['hmrc_box'], (int) $c['allowable'] === 1 && !in_array((string) $c['hmrc_box'], Money::NOT_COSTS, true), (int) ($c['with_mileage'] ?? 0) === 1];
         }
         $inc = [];
-        $vat = Vat::on();
-        foreach ($db->table('money_income')->whereNull('deleted_at')->select('income_date', 'amount', 'stream_id', 'invoice_id', 'vat_amount')->get() as $r) {
-            $inc[] = [(string) $r['income_date'], $vat ? Vat::incomeNet($r) : (float) $r['amount'], (int) $r['stream_id']];
+        foreach ($db->table('money_income')->whereNull('deleted_at')->select('income_date', 'amount', 'stream_id', 'invoice_id', 'vat_amount', 'cis_deducted')->get() as $r) {
+            $inc[] = [(string) $r['income_date'], Vat::incomeNet($r), (int) $r['stream_id'], Cis::taken($r)];
         }
         $exp = [];
         $byMileage = Mileage::mileageVehicleIds();
         $flat = HomeUse::flat();
-        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('expense_date', 'category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount')->get() as $r) {
+        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('expense_date', 'category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount', 'cis_deducted')->get() as $r) {
             $cat = $cats[(int) $r['category_id']] ?? ['other', true, false];
-            $mine = $vat ? Vat::expenseNet($r, $cat[0]) : round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
+            $mine = Vat::expenseNet($r, $cat[0]);
             if ($byMileage && in_array((int) $r['vehicle_id'], $byMileage, true) && !$cat[2]) {
                 $exp[] = [(string) $r['expense_date'], $mine, false, 'mileage_covered', (int) $r['category_id'], (int) $r['stream_id']];
                 continue;
@@ -50,13 +49,14 @@ final class Insights
         return ['inc' => $inc, 'exp' => $exp];
     }
 
-    /** @return array{income:float,costs:float,profit:float,pension:float} */
+    /** @return array{income:float,costs:float,profit:float,pension:float,cis:float} cis: what contractors took off you for HMRC */
     public static function totals(array $data, string $from, string $to): array
     {
-        $i = $c = $p = 0.0;
+        $i = $c = $p = $cis = 0.0;
         foreach ($data['inc'] as $r) {
             if ($r[0] >= $from && $r[0] <= $to) {
                 $i += $r[1];
+                $cis += $r[3] ?? 0.0;
             }
         }
         foreach ($data['exp'] as $r) {
@@ -68,7 +68,7 @@ final class Insights
                 }
             }
         }
-        return ['income' => round($i, 2), 'costs' => round($c, 2), 'profit' => round($i - $c, 2), 'pension' => round($p, 2)];
+        return ['income' => round($i, 2), 'costs' => round($c, 2), 'profit' => round($i - $c, 2), 'pension' => round($p, 2), 'cis' => round($cis, 2)];
     }
 
     /**

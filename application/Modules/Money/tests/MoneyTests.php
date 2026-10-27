@@ -2772,6 +2772,128 @@ final class MoneyTests
         return '';
     }
 
+    public function test_cis_comes_off_labour_counts_as_tax_paid_and_is_kept_month_by_month(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $off = Insights::totals(Insights::load(), $from, $to);
+            $s->set('money.cis_sub', true);
+            $s->set('money.cis_rate', '20');
+            $json = ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json'];
+            $post = static fn(array $d) => new Request('POST', '/x', [], $d + ['after' => 'list'], [], $json);
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $now = '2026-06-10 09:00:00';
+            // Tax months run from the 6th to the 5th and are named by the month they end in.
+            $this->assert(\AP\Modules\Money\Cis::monthOf('2026-06-05') === '2026-06' && \AP\Modules\Money\Cis::monthOf('2026-06-06') === '2026-07' && \AP\Modules\Money\Cis::monthRange('2026-05') === ['2026-04-06', '2026-05-05']
+                && \AP\Modules\Money\Cis::months('2026-27')[0] === '2026-05' && \AP\Modules\Money\Cis::months('2026-27')[11] === '2027-04' && \AP\Modules\Money\Cis::due('2026-07') === ['file' => '2026-07-19', 'pay' => '2026-07-22'], 'tax months');
+            // A contractor client, and an invoice with labour and materials: 20% comes off the labour only.
+            $cc = new \AP\Modules\Money\Controllers\ContactController();
+            $cc->save($post(['name' => 'Acme Build', 'kind' => 'client', 'cis_rate' => '20', 'cis_ref' => '']));
+            $acme = (int) $db->table('money_contacts')->where('name', 'Acme Build')->value('id');
+            $this->assert($db->table('money_contacts')->where('id', $acme)->value('cis_rate') === '20', 'a client can be marked as a CIS contractor');
+            $ic = new InvoiceController();
+            $form = $ic->form($get('/admin/money/invoices/new'))->body;
+            $this->assert(str_contains($form, 'name="cis_rate"') && str_contains($form, 'data-cis-map') && str_contains($form, '&quot;' . $acme . '&quot;:&quot;20&quot;'), 'the invoice form offers CIS and knows the client\'s rate');
+            $id = (int) $db->table('money_invoices')->insertGetId(['number' => 'INV-C1', 'contact_id' => $acme, 'issue_date' => '2026-06-10', 'due_date' => '2026-06-24', 'status' => 'sent', 'cis_rate' => '20', 'created_at' => $now, 'updated_at' => $now]);
+            $ic->itemSave($post(['title' => 'Labour', 'quantity' => '4', 'rate' => '250', 'cis_kind' => 'labour']), (string) $id);
+            $ic->itemSave($post(['title' => 'Timber', 'quantity' => '1', 'rate' => '250', 'cis_kind' => 'materials']), (string) $id);
+            $inv = $db->table('money_invoices')->where('id', $id)->first();
+            $this->assert((float) $inv['total'] === 1250.0 && (float) $inv['cis'] === 200.0 && (float) $inv['cis_labour'] === 1000.0 && (float) $inv['cis_materials'] === 250.0 && Money::invoiceBalance($inv, 0) === 1050.0, 'the client pays 1,050: ' . json_encode($inv));
+            $page = $ic->show($get('/admin/money/invoices/' . $id), (string) $id)->body;
+            $this->assert(str_contains($page, 'CIS Deduction (20% Of £1,000.00 Labour)') && str_contains($page, '-£200.00') && str_contains($page, '>Materials<') && str_contains($page, '£1,050.00'), 'the invoice shows the deduction');
+            $doc = $ic->document($get('/x'), (string) $id)->body;
+            $this->assert(str_contains($doc, 'CIS Deduction (20% Of £1,000.00 Labour)') && str_contains($doc, 'doc-tag'), 'so does the printable invoice');
+            $itemForm = $ic->itemForm($get('/x'), (string) $id)->body;
+            $this->assert(str_contains($itemForm, 'name="cis_kind"'), 'lines say labour or materials');
+            // Paid in full by the contractor, and a payment with no invoice typed from a statement.
+            $db->table('money_income')->insert(['income_date' => '2026-06-20', 'title' => 'Payment for INV-C1', 'contact_id' => $acme, 'invoice_id' => $id, 'amount' => 1050, 'created_at' => $now, 'updated_at' => $now]);
+            $this->assert(Money::invoiceState($inv, 1050.0) === 'paid', 'paying what is due after CIS settles the invoice');
+            $inc = new IncomeController();
+            $bad = $inc->save($post(['title' => 'Extra', 'income_date' => '01/07/2026', 'amount' => '240', 'cis_deducted' => 'lots']));
+            $this->assert($bad->status === 422 && isset(json_decode($bad->body, true)['errors']['cis_deducted']), 'the CIS box is checked');
+            $inc->save($post(['title' => 'Snagging', 'income_date' => '10/07/2026', 'amount' => '240', 'contact_id' => (string) $acme, 'cis_deducted' => '60', 'cis_materials' => '']));
+            $this->assert((float) $db->table('money_income')->where('title', 'Snagging')->value('cis_deducted') === 60.0, 'a payment keeps its deduction');
+            \AP\Modules\Money\Cis::reset();
+            // Income is the full amount before CIS, and the deductions are tax already paid.
+            $on = Insights::totals(Insights::load(), $from, $to);
+            $this->assert(abs($on['income'] - ($off['income'] + 1250 + 300)) < 0.01 && $on['cis'] === 260.0, 'income before CIS and 260 taken off: ' . json_encode($on));
+            $o = Money::overview('2026-27');
+            $this->assert(abs($o['income'] - $on['income']) < 0.01, 'the overview agrees');
+            $est = Tax::forYear('2026-27', $on);
+            $this->assert($est['cis'] === 260.0 && $est['total'] === round(max(0, $est['tax_all'] - 260), 2) && $est['refund'] === round(max(0, 260 - $est['tax_all']), 2), 'the estimate takes CIS off: ' . json_encode(array_intersect_key($est, array_flip(['tax_all', 'cis', 'total', 'refund']))));
+            $big = ['total' => 1000.0];
+            Tax::takeOffCis($big, 260);
+            $this->assert($big['total'] === 740.0 && $big['tax_all'] === 1000.0 && $big['refund'] === 0.0, 'left to pay after CIS');
+            $poa = Tax::paymentsOnAccount('2026-27', ['income_tax' => 1000.0, 'class4' => 200.0, 'class2' => 0.0, 'income_tax_all' => 1000.0, 'other_tax' => 0.0, 'cis' => 1000.0], Tax::rates('2026-27'));
+            $this->assert(!$poa['needed'] && $poa['balancing'] === 200.0, 'no payments on account when most tax was taken off at source: ' . json_encode($poa));
+            $tax = (new TaxController())->index($get('/admin/money/tax', ['year' => '2026-27']))->body;
+            $this->assert(str_contains($tax, 'CIS contractors took off for HMRC'), 'the tax page shows the CIS');
+            // Month by month, by contractor.
+            $rec = \AP\Modules\Money\Cis::received('2026-27');
+            $this->assert(($rec['2026-07'][$acme] ?? null) == ['gross' => 1250.0, 'materials' => 250.0, 'deducted' => 200.0, 'paid' => 1050.0, 'count' => 1] && $rec['2026-08'][$acme]['gross'] === 300.0 && $rec['2026-08'][$acme]['deducted'] === 60.0, 'received by month: ' . json_encode($rec));
+            // Paying a subcontractor as a contractor: the deduction is a cost too, and goes on their statement.
+            $s->set('money.cis_contractor', true);
+            $s->set('money.cis_office_ref', '123/AB45678');
+            $cc->save($post(['name' => 'Sam Plaster', 'kind' => 'supplier', 'cis_rate' => '20', 'cis_ref' => '1234567890']));
+            $sam = (int) $db->table('money_contacts')->where('name', 'Sam Plaster')->value('id');
+            $before = Insights::totals(Insights::load(), $from, $to)['costs'];
+            $ec = new ExpenseController();
+            $this->assert(str_contains($ec->form($get('/x'))->body, 'name="cis_deducted"'), 'the expense form has the CIS boxes');
+            $ec->save($post(['title' => 'Plastering', 'expense_date' => '15/06/2026', 'amount' => '800', 'contact_id' => (string) $sam, 'category_id' => '7', 'cis_deducted' => '200', 'cis_materials' => '']));
+            $this->assert(abs(Insights::totals(Insights::load(), $from, $to)['costs'] - $before - 1000) < 0.01, 'the cost is what they were paid plus the deduction');
+            $paid = \AP\Modules\Money\Cis::paid('2026-27');
+            $this->assert(($paid['2026-07'][$sam]['gross'] ?? 0) === 1000.0 && $paid['2026-07'][$sam]['deducted'] === 200.0 && $paid['2026-07'][$sam]['paid'] === 800.0, 'paid by month: ' . json_encode($paid));
+            $cis = new \AP\Modules\Money\Controllers\CisController();
+            $st = $cis->statement($get('/x', ['month' => '2026-07', 'contact' => (string) $sam]));
+            $this->assert($st->status === 200 && str_contains($st->body, 'Amount liable to deduction') && str_contains($st->body, '£1,000.00') && str_contains($st->body, '£200.00') && str_contains($st->body, '£800.00')
+                && str_contains($st->body, '123/AB45678') && str_contains($st->body, 'UTR: 1234567890') && str_contains($st->body, '05/07/2026'), 'the subcontractor statement');
+            $pg = $cis->index($get('/admin/money/cis', ['year' => '2026-27', 'month' => '2026-07']));
+            $this->assert($pg->status === 200 && str_contains($pg->body, 'Paid To You') && str_contains($pg->body, 'Paid To Subcontractors') && str_contains($pg->body, 'Monthly Return') && str_contains($pg->body, 'Sam Plaster')
+                && str_contains($pg->body, 'Pay HMRC By') && str_contains($pg->body, '6 Jun to 5 Jul 2026') && str_contains($pg->body, 'data-vat-nav'), 'the CIS page');
+            // Statements received and returns filed are noted in the background.
+            $this->assert(\AP\Modules\Money\Cis::reminder('2026-07-10')['tone'] === 'warn' && \AP\Modules\Money\Cis::reminder('2026-07-25')['tone'] === 'bad', 'the dashboard reminds about the return');
+            $j = json_decode($cis->mark($post(['role' => 'sub', 'month' => '2026-07', 'contact_id' => (string) $acme]))->body, true);
+            $this->assert($j['ok'] && str_contains($j['html'], 'Received') && isset(\AP\Modules\Money\Cis::notes('sub')['2026-07:' . $acme]), 'statement ticked');
+            $bad = $cis->mark($post(['role' => 'contractor', 'month' => '2026-07', 'done_on' => 'never']));
+            $this->assert($bad->status === 422, 'the filing date is checked');
+            $j = json_decode($cis->mark($post(['role' => 'contractor', 'month' => '2026-07', 'done_on' => '18/07/2026', 'reference' => 'R1']))->body, true);
+            $this->assert($j['ok'] && str_contains($j['html'], 'R1') && \AP\Modules\Money\Cis::reminder('2026-07-25') === null && str_contains((string) json_decode((string) $db->table('money_cis_months')->where('role', 'contractor')->value('snapshot'), true)[$sam]['deducted'], '200'), 'return filed, with a copy of the figures');
+            $csv = $cis->csv($get('/x', ['year' => '2026-27']));
+            $this->assert(str_contains($csv->body, 'Paid to subcontractors') && str_contains($csv->body, 'Sam Plaster') && str_contains($csv->body, 'Acme Build'), 'the CIS CSV');
+            // With VAT: the client pays the total less CIS, and each payment carries VAT in that proportion. The reverse charge adds no VAT.
+            $s->set('money.vat_registered', true);
+            $v = (int) $db->table('money_invoices')->insertGetId(['number' => 'INV-C2', 'contact_id' => $acme, 'issue_date' => '2026-08-10', 'status' => 'sent', 'cis_rate' => '20', 'created_at' => $now, 'updated_at' => $now]);
+            $ic->itemSave($post(['title' => 'Labour', 'quantity' => '1', 'rate' => '1000', 'cis_kind' => 'labour', 'vat_rate' => 'standard']), (string) $v);
+            $vi = $db->table('money_invoices')->where('id', $v)->first();
+            $this->assert((float) $vi['tax'] === 200.0 && (float) $vi['cis'] === 200.0 && Money::invoiceBalance($vi, 0) === 1000.0, 'CIS is never taken off the VAT');
+            $row = ['income_date' => '2026-08-20', 'amount' => 1000.0, 'invoice_id' => $v, 'vat_amount' => 0, 'cis_deducted' => 0];
+            Vat::reset();
+            \AP\Modules\Money\Cis::reset();
+            $this->assert(Vat::incomeVat($row) === 200.0 && Vat::incomeNet($row) === 1000.0, 'paid 1,000: 200 of it VAT, and with the 200 CIS the sale is 1,000');
+            $rv = (int) $db->table('money_invoices')->insertGetId(['number' => 'INV-C3', 'contact_id' => $acme, 'issue_date' => '2026-08-11', 'status' => 'sent', 'cis_rate' => '20', 'created_at' => $now, 'updated_at' => $now]);
+            $ic->itemSave($post(['title' => 'Labour', 'quantity' => '1', 'rate' => '500', 'cis_kind' => 'labour', 'vat_rate' => 'reverse']), (string) $rv);
+            $this->assert((float) $db->table('money_invoices')->where('id', $rv)->value('tax') === 0.0 && str_contains($ic->show($get('/x'), (string) $rv)->body, Vat::REVERSE_NOTE)
+                && isset(Vat::options('2026-08-11')['reverse']), 'the reverse charge adds no VAT and says so');
+            $s->set('money.vat_registered', false);
+            // Settings, the menu and the business setup switch.
+            $defs = $s->definitions();
+            $this->assert(($defs['money.cis_rate']['show_if'] ?? null) === ['money.cis_sub' => '1'], 'the rate shows only when paid under CIS');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/cis'] ?? ''), 'subcontractor'), 'the search finds CIS');
+            $s->set('money.cis_sub', false);
+            $s->set('money.cis_contractor', false);
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(!isset($items['money/cis']) && \AP\Modules\Money\Cis::reminder('2026-07-25') === null, 'CIS leaves the menu when switched off');
+            Setup::apply($db, $s, ['mode' => 'ready', 'trades' => ['trades'], 'vehicle' => true, 'home' => false, 'dashboard' => false, 'cis' => true, 'skip' => []], 1);
+            $this->assert($s->get('money.cis_sub') === true, 'business setup can switch CIS on');
+            $this->assert(str_contains((new SetupController())->index($get('/admin/money/setup'))->body, 'Contractors Pay Me Under CIS'), 'and asks about it');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';
@@ -2816,6 +2938,7 @@ final class MoneyTests
             Mileage::reset();
             \AP\Modules\Money\Assets::reset();
             Vat::reset();
+            \AP\Modules\Money\Cis::reset();
             $modules->boot($app, false, true);
             $app->set('auth', new FakeAuth());
             View::addNamespace('app', AP_ROOT . '/Views');

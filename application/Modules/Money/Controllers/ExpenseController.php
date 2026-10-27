@@ -216,6 +216,8 @@ final class ExpenseController
         $errors += \AP\Modules\Money\CustomFields::validate('expense', $request);
         [$vat, $vatErrors] = \AP\Modules\Money\Vat::fromForm($request, $amount, $date);
         $errors += $vatErrors;
+        [$cis, $cisErrors] = $request->has('cis_deducted') ? \AP\Modules\Money\Cis::fromForm($request, $amount) : [[], []];
+        $errors += $cisErrors;
         if ($errors) {
             return Forms::fail($request, $errors, admin_url('money/expenses/' . ($id ?: 'new')));
         }
@@ -226,7 +228,7 @@ final class ExpenseController
             'recurring' => $recurring ? 1 : 0, 'repeat_every' => $recurring ? $every : 0, 'repeat_unit' => $recurring ? $unit : null,
             'max_cycles' => $recurring ? max(0, min(9999, $request->int('max_cycles'))) : 0, 'repeat_until' => $recurring ? $until : null,
             'updated_at' => gmdate('Y-m-d H:i:s'),
-        ] + $vat;
+        ] + $vat + $cis;
         if ($id > 0) {
             $old = $db->table('money_expenses')->where('id', $id)->whereNull('deleted_at')->first() ?? throw new HttpException(404);
             $data['next_date'] = $recurring ? ($old['next_date'] ?: Recurring::advance((string) $date, $every, $unit)) : null;

@@ -25,6 +25,7 @@ body{margin:0;background:#f5f6fa;color:#1f2937;font:14px/1.5 system-ui,-apple-sy
 .doc-items td{padding:11px 12px;border-bottom:1px solid #eceef3;vertical-align:top}
 .doc-items .r{text-align:right;white-space:nowrap}
 .doc-desc{color:#6b7280;font-size:13px}
+.doc-tag{font-style:normal;font-size:11px;font-weight:600;color:#4b5563;background:#F5F6FA;border:1px solid #e5e7eb;border-radius:999px;padding:1px 8px;margin-left:6px;white-space:nowrap}
 .doc-sum{margin-left:auto;width:290px}
 .doc-sum div{display:flex;justify-content:space-between;padding:6px 12px}
 .doc-sum .is-due{background:var(--doc-accent);color:#fff;border-radius:8px;font-size:16px;font-weight:700;margin-top:6px;padding:10px 12px}

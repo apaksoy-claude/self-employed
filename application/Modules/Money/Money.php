@@ -166,10 +166,10 @@ final class Money
         return preg_match('/^-?\d{1,10}(\.\d{1,2})?$/', $t) ? round((float) $t, 2) : null;
     }
 
-    /** Money still to be paid on an invoice. */
+    /** Money still to be paid on an invoice: the total, less any CIS the client takes off for HMRC, less what was paid. */
     public static function invoiceBalance(array $invoice, float $paid): float
     {
-        return round((float) $invoice['total'] - $paid, 2);
+        return round((float) $invoice['total'] - (float) ($invoice['cis'] ?? 0) - $paid, 2);
     }
 
     /** paid, part, unpaid, overdue, draft or cancelled. */
@@ -201,8 +201,7 @@ final class Money
         $db = self::db();
         [$from, $to] = self::taxYearRange($year);
         $inc = $db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to);
-        $vatOn = Vat::on();
-        $income = $vatOn ? round(array_sum(array_map(static fn($r) => Vat::incomeNet($r), (clone $inc)->select('income_date', 'amount', 'invoice_id', 'vat_amount')->get())), 2) : round($inc->sum('amount'), 2);
+        $income = round(array_sum(array_map(static fn($r) => Vat::incomeNet($r), (clone $inc)->select('income_date', 'amount', 'invoice_id', 'vat_amount', 'cis_deducted')->get())), 2);
         $cats = $db->table('money_categories')->get();
         $catById = [];
         foreach ($cats as $c) {
@@ -215,13 +214,13 @@ final class Money
         $perStream = [];
         $nExp = 0;
         $rows = $db->table('money_expenses')->whereNull('deleted_at')->where('expense_date', '>=', $from)->where('expense_date', '<=', $to)
-            ->select('category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount', 'expense_date')->get();
+            ->select('category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount', 'expense_date', 'cis_deducted')->get();
         $byMileage = Mileage::mileageVehicleIds();
         $flatHome = HomeUse::flat();
         foreach ($rows as $r) {
             $nExp++;
             $cat = $catById[(int) $r['category_id']] ?? null;
-            $mine = $vatOn ? Vat::expenseNet($r, (string) ($cat['hmrc_box'] ?? '')) : round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
+            $mine = Vat::expenseNet($r, (string) ($cat['hmrc_box'] ?? ''));
             if ($byMileage && in_array((int) $r['vehicle_id'], $byMileage, true) && empty($cat['with_mileage'])) {
                 $notCosts['mileage_covered'] = round(($notCosts['mileage_covered'] ?? 0) + $mine, 2);
                 continue;
@@ -266,9 +265,9 @@ final class Money
             $costs += $home;
             $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $home;
         }
-        foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount', 'income_date', 'invoice_id', 'vat_amount')->get() as $r) {
+        foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount', 'income_date', 'invoice_id', 'vat_amount', 'cis_deducted')->get() as $r) {
             $sid = (int) $r['stream_id'];
-            $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + ($vatOn ? Vat::incomeNet($r) : (float) $r['amount']);
+            $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + Vat::incomeNet($r);
         }
         $names = $db->table('money_streams')->pluck('name', 'id');
         $streams = [];
@@ -545,7 +544,8 @@ final class Money
         $registered = Vat::registeredOn($date);
         $sub = 0.0;
         $vat = 0.0;
-        foreach ($db->table('money_invoice_items')->where('invoice_id', $id)->get() as $it) {
+        $items = $db->table('money_invoice_items')->where('invoice_id', $id)->get();
+        foreach ($items as $it) {
             $sub += (float) $it['total'];
             $code = (string) ($it['vat_rate'] ?? '');
             $v = $registered && $code !== '' ? Vat::onNet((float) $it['total'], $code, $date) : 0.0;
@@ -557,7 +557,10 @@ final class Money
         $sub = round($sub, 2);
         $discount = min(round((float) $inv['discount'], 2), $sub);
         $tax = $sub > 0 ? round($vat * ($sub - $discount) / $sub, 2) : 0.0;
-        $db->table('money_invoices')->where('id', $id)->update(['subtotal' => $sub, 'discount' => $discount, 'tax' => $tax, 'total' => round($sub - $discount + $tax, 2), 'updated_at' => gmdate('Y-m-d H:i:s')]);
+        $cis = Cis::forInvoice((string) ($inv['cis_rate'] ?? ''), $items, $sub, $discount);
+        $db->table('money_invoices')->where('id', $id)->update(['subtotal' => $sub, 'discount' => $discount, 'tax' => $tax, 'total' => round($sub - $discount + $tax, 2),
+            'cis' => $cis['cis'], 'cis_labour' => $cis['labour'], 'cis_materials' => $cis['materials'], 'updated_at' => gmdate('Y-m-d H:i:s')]);
         Vat::reset();
+        Cis::reset();
     }
 }
