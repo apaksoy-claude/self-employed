@@ -496,3 +496,16 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .mn-fields > .mn-stock-lines { flex: 0 0 100%; margin-top: 0; }
 .mn-stock-lines .ap-repeater { background: transparent; }
 [data-stock-count] .mn-card > header .ap-field { margin: 0; }
+
+/* Money > Bank Import */
+.bk-page .mn-card h2 i { color: var(--ap-accent); margin-right: .45rem; }
+.bk-page .ap-dropzone.is-invalid { border-color: var(--mn-bad, #dc3545); }
+.bk-preview th { min-width: 9rem; }
+.bk-preview tr.is-head td { font-weight: 600; background: #F5F6FA; }
+.bk-table td { vertical-align: top; }
+.bk-table td .form-control-sm, .bk-table td .form-select-sm { min-width: 12rem; }
+.bk-table tr.is-done { opacity: .6; }
+.bk-table small { display: block; margin-top: .2rem; }
+.bk-bulk .form-select { min-width: 14rem; }
+.bk-page .mn-rows li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem 0; border-bottom: 1px dashed var(--mn-line); font-size: .9rem; }
+.bk-page .mn-rows li small { display: block; color: var(--mn-sub); font-size: .78rem; }

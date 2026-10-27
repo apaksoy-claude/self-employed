@@ -2976,6 +2976,87 @@ final class MoneyTests
         return '';
     }
 
+    public function test_bank_statements_are_read_reviewed_and_never_added_twice(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            $B = \AP\Modules\Money\Bank::class;
+            // Amounts and dates as banks write them.
+            $this->assert($B::money('£1,234.56') === 1234.56 && $B::money('-12.50') === -12.5 && $B::money('12.50 CR') === 12.5 && $B::money('12.50DR') === -12.5 && $B::money('(12.50)') === -12.5
+                && $B::money('') === null && $B::money('n/a') === null, 'amounts');
+            $this->assert($B::date('15/04/2026', 'd/m/Y') === '2026-04-15' && $B::date('31/02/2026', 'd/m/Y') === null && $B::date('2026-04-15 10:22', 'Y-m-d') === '2026-04-15'
+                && $B::dateFormat(['15/04/2026', '01/05/2026']) === 'd/m/Y' && $B::dateFormat(['2026-04-15']) === 'Y-m-d' && $B::dateFormat(['04/15/2026', '05/20/2026']) === 'm/d/Y'
+                && $B::dateFormat(['15 Apr 2026', '2 May 2026']) === 'd M Y', 'dates');
+            // A CSV with a line above the column names and separate paid in and paid out columns.
+            $csv = "Account: Business Current 12-34-56\nDate,Description,Paid out,Paid in,Balance\n15/04/2026,SHELL FUEL LEEDS,45.20,,1000.00\n16/04/2026,NORTHWIND LTD PAYMENT,,100.00,1100.00\n"
+                . "17/04/2026,COFFEE SHOP,3.50,,1096.50\n17/04/2026,COFFEE SHOP,3.50,,1093.00\n18/04/2026,BALANCE CARRIED FORWARD,,,1093.00\n";
+            $read = $B::read($csv, 'statement.csv');
+            $this->assert($read['kind'] === 'csv' && ($read['map']['header'] ?? null) === 1 && $read['map']['cols'] == ['date' => 0, 'desc' => 1, 'out' => 2, 'in' => 3] && empty($read['map']['unsure']), 'the columns are found by their names: ' . json_encode($read['map']));
+            $rows = $B::fingerprint($B::rows($read['table'], $read['map']), 'Business');
+            $this->assert(count($rows) === 4 && $rows[0]['amount'] === -45.2 && $rows[1]['amount'] === 100.0 && $rows[2]['hash'] !== $rows[3]['hash'], 'four lines, and two the same are both kept');
+            // Upload, review with a rule, and add.
+            $s->set('money.feature_vehicles', true);
+            $fuel = (int) $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Fuel', 'hmrc_box' => 'car_van_travel', 'allowable' => 1, 'active' => 1, 'created_at' => '2026-04-01 00:00:00']);
+            $bc = new \AP\Modules\Money\Controllers\BankController();
+            $json = ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json'];
+            $saved = json_decode($bc->rules(new Request('POST', '/x', [], ['rules' => [['keyword' => 'shell', 'direction' => 'out', 'category' => (string) $fuel, 'stream' => '', 'title' => 'Fuel'], ['keyword' => '', 'direction' => 'out']]], [], $json))->body, true);
+            $this->assert($saved['ok'] && $db->table('money_rules')->count() === 1, 'rules are saved in the background, empty rows left out');
+            $page = $bc->index(new Request('GET', '/admin/money/bank', [], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(str_contains($page, 'Load A Statement') && str_contains($page, 'data-repeater') && str_contains($page, 'value="shell"'), 'the page shows the upload and the rules');
+            $tmp = $this->tmp . '/statement.csv';
+            file_put_contents($tmp, $csv);
+            // A payment already added by hand matches the 100.00 coming in, and an open invoice of 3.50 does not steal a cost.
+            $db->table('money_income')->insert(['income_date' => '2026-04-17', 'title' => 'Northwind payment', 'amount' => 100, 'created_at' => '2026-04-17 00:00:00', 'updated_at' => '2026-04-17 00:00:00']);
+            $up = $bc->upload(new Request('POST', '/x', [], ['account' => 'Business'], ['statement' => ['name' => 'statement.csv', 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => strlen($csv)]], ['HTTP_HOST' => 'localhost']));
+            $loc = (string) ($up->headers['Location'] ?? '');
+            $this->assert($up->status === 302 && preg_match('#/money/bank/([a-f0-9]{32})$#', $loc, $m) === 1, 'the statement goes straight to the review: ' . $loc);
+            $token = $m[1];
+            $rev = $bc->review(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), $token)->body;
+            $this->assert(str_contains($rev, 'Review Each Line') && str_contains($rev, 'value="Fuel"') && str_contains($rev, 'Rule: shell') && str_contains($rev, 'added by hand') && str_contains($rev, 'data-bank-payload'), 'the review shows rules and matches');
+            $reviewed = $B::review((array) $B::staged($token)['rows']);
+            $this->assert(array_column($reviewed, 'status') === ['new', 'match', 'new', 'new'] && $reviewed[0]['category'] === $fuel, 'statuses: ' . json_encode(array_column($reviewed, 'status')));
+            $payload = json_encode([['n' => 0, 'title' => 'Fuel', 'category' => (string) $fuel], ['n' => 2, 'title' => 'Coffee', 'category' => '0'], ['n' => 3, 'title' => 'Coffee', 'category' => '0']]);
+            $bc->import(new Request('POST', '/x', [], ['payload' => $payload], [], ['HTTP_HOST' => 'localhost']), $token);
+            $this->assert($db->table('money_expenses')->whereNotNull('bank_hash')->count() === 3 && (int) $db->table('money_expenses')->where('title', 'Fuel')->value('category_id') === $fuel
+                && $db->table('money_income')->whereNotNull('bank_hash')->count() === 0 && $B::staged($token) === null, 'three expenses added, the matched payment left alone, the statement put away');
+            // The same statement again: nothing new.
+            $again = $B::review($B::fingerprint($B::rows($read['table'], $read['map']), 'Business'));
+            $this->assert(array_column($again, 'status') === ['done', 'match', 'done', 'done'], 'loading it again adds nothing: ' . json_encode(array_column($again, 'status')));
+            $n = $B::import($again, [0 => [], 2 => [], 3 => []], 'statement.csv', 'csv', 'Business');
+            $this->assert($n['out'] === 0 && $n['skipped'] === 4, 'even when ticked');
+            // Take an import back.
+            $imp = (int) $db->table('money_bank_imports')->where('added_out', 3)->value('id');
+            $bc->undo(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $imp);
+            $this->assert($db->table('money_expenses')->whereNotNull('bank_hash')->whereNull('deleted_at')->count() === 0 && array_column($B::review($B::fingerprint($B::rows($read['table'], $read['map']), 'Business')), 'status')[0] === 'new', 'taken back and ready to load again');
+            // A CSV whose columns are not clear asks once, and the layout is remembered.
+            $odd = "When,What,Sum\n15/04/2026,Train,-12.40\n16/04/2026,Refund,5.00\n";
+            $r2 = $B::read($odd, 'odd.csv');
+            $this->assert($r2['map'] === null, 'unknown column names need a check');
+            file_put_contents($tmp, $odd);
+            $up2 = $bc->upload(new Request('POST', '/x', [], [], ['statement' => ['name' => 'odd.csv', 'tmp_name' => $tmp, 'error' => UPLOAD_ERR_OK, 'size' => strlen($odd)]], ['HTTP_HOST' => 'localhost']));
+            preg_match('#/money/bank/([a-f0-9]{32})/columns$#', (string) ($up2->headers['Location'] ?? ''), $m2);
+            $this->assert(isset($m2[1]), 'it goes to the column check');
+            $colPage = $bc->columns(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), $m2[1])->body;
+            $this->assert(str_contains($colPage, 'name="role[0]"') && str_contains($colPage, 'Save This Layout As'), 'the column page');
+            $bc->columnsSave(new Request('POST', '/x', [], ['header' => '0', 'role' => ['date', 'desc', 'amount'], 'date_format' => 'd/m/Y', 'layout_name' => 'My Odd Bank'], [], ['HTTP_HOST' => 'localhost']), $m2[1]);
+            $this->assert($db->table('money_bank_layouts')->where('name', 'My Odd Bank')->exists() && count((array) $B::staged($m2[1])['rows']) === 2, 'the layout is saved and the lines read');
+            $r3 = $B::read($odd, 'odd again.csv');
+            $this->assert(($r3['map']['layout_name'] ?? '') === 'My Odd Bank' && count($B::rows($r3['table'], $r3['map'])) === 2, 'next time the saved layout is used by itself');
+            $B::forget($m2[1]);
+            // OFX: each line's own id is its fingerprint.
+            $ofx = "OFXHEADER:100\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><ACCTID>12345678</BANKACCTFROM><BANKTRANLIST>\n<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20260420120000<TRNAMT>-19.99<FITID>A1<NAME>WEB HOSTING CO</STMTTRN>\n"
+                . "<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20260421<TRNAMT>250.00<FITID>A2<NAME>CLIENT<MEMO>INV-1</STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+            $o = $B::read($ofx, 'bank.ofx');
+            $this->assert($o['kind'] === 'ofx' && $o['account'] === '12345678' && count($o['rows']) === 2 && $o['rows'][0]['date'] === '2026-04-20' && $o['rows'][0]['amount'] === -19.99 && $o['rows'][1]['desc'] === 'CLIENT INV-1', 'OFX lines: ' . json_encode($o['rows']));
+            $or = $B::fingerprint($o['rows'], '12345678');
+            $this->assert($or[0]['hash'] === sha1('ofx|12345678|A1'), 'OFX ids');
+            $this->assert(str_contains((string) (array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url')['money/bank'] ?? ''), 'statement'), 'the search finds Bank Import');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';

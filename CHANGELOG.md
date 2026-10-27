@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.44.0 - Bank statement import
+Update package: install from System > Updates, then press "Finish update" (adds tables for bank layouts and imports).
+- New page: Money > Bank Import. Load a statement downloaded from online banking: a CSV from any bank, or an OFX or QFX file. Say which account it is for, so the same account is always matched.
+- CSV columns are found by their names (date, description, amount, or paid in and paid out), even with lines above them. When a bank uses other names, choose the columns and the date style once and save the layout: statements from that bank are read by themselves after that.
+- Review every line before anything is added. Money out becomes an expense and money in a payment, with the title and category to change. Lines already added from an earlier statement are marked Already Added and can never be added again, so overlapping statements are safe. A line with the same amount as an expense or payment you typed in yourself a few days either side is marked Check and left unticked (Settings > Money > Bank Import sets how many days). Money in that matches what is left on an open invoice is counted against that invoice.
+- Rules, in rows you can reorder: when a description contains your words, the line gets that category, stream and title. The first rule that matches wins. Rules save in the background.
+- Set the category of all ticked lines at once. Long statements are sent as one list so nothing is lost.
+- Recent Imports: take back an import that went wrong, moving what it added to the bin.
+- With VAT registered, imported lines get your starting VAT choices.
+- Tests: Money 64, core 65.
+
 ## 1.43.0 - Stock for sellers
 Update package: install from System > Updates, then press "Finish update" (adds the stock tables).
 - Settings > Money > Features: Stock, with the starting warning level for new items. Business Setup and the installer ask about it too.

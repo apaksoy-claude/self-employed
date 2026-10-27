@@ -642,3 +642,42 @@ document.addEventListener('change', function (e) {
     var f = form.querySelector('[name="' + p[0] + '"]'); if (f && p[1] !== '' && p[1] !== '0.00') { f.value = p[1]; f.dispatchEvent(new Event('input', { bubbles: true })); }
   });
 });
+
+// Bank Import review: tick every new line, set the category of ticked lines, and send the chosen lines as one list.
+(function () {
+  var form = document.querySelector('form[data-bank-review]');
+  if (!form) { return; }
+  var boxes = function () { return Array.prototype.slice.call(form.querySelectorAll('input[name^="pick["]:not([disabled])')); };
+  var note = form.querySelector('[data-bank-n]');
+  function count() { if (note) { note.textContent = boxes().filter(function (b) { return b.checked; }).length + ' ticked'; } }
+  var all = form.querySelector('[data-bank-all]');
+  if (all) { all.addEventListener('change', function () { boxes().forEach(function (b) { b.checked = all.checked; }); count(); }); }
+  form.addEventListener('change', function (e) { if (e.target.matches('input[name^="pick["]')) { count(); } });
+  var setcat = form.querySelector('[data-bank-setcat]');
+  if (setcat) {
+    setcat.addEventListener('change', function () {
+      var v = setcat.value; if (!v) { return; }
+      var n = 0;
+      boxes().forEach(function (b) {
+        if (!b.checked) { return; }
+        var sel = b.closest('tr').querySelector('select[name^="category["]');
+        if (sel && sel.querySelector('option[value="' + v + '"]')) { sel.value = v; n++; }
+      });
+      setcat.value = '';
+      if (window.apToast) { window.apToast('info', n + ' line(s) changed. Costs take cost categories and money in takes income ones.'); }
+    });
+  }
+  form.addEventListener('submit', function () {
+    var list = [];
+    boxes().forEach(function (b) {
+      if (!b.checked) { return; }
+      var tr = b.closest('tr'), n = tr.getAttribute('data-bank-row');
+      var get = function (name) { var el = tr.querySelector('[name="' + name + '[' + n + ']"]'); return el ? el.value : ''; };
+      list.push({ n: parseInt(n, 10), title: get('title'), category: get('category'), invoice: get('invoice') });
+    });
+    form.querySelector('[data-bank-payload]').value = JSON.stringify(list);
+    // The lines go as one list, so the boxes of each line are not sent as well (long statements stay within the server's limits).
+    form.querySelectorAll('[data-bank-row] input, [data-bank-row] select').forEach(function (el) { el.disabled = true; });
+  });
+  count();
+})();
