@@ -7,6 +7,7 @@ Update package: install from System > Updates. No database changes.
 - Getting-started tour: the first time someone signs in, the dashboard walks them through each part of Money in ten short steps, with Back, Next and Skip. It is remembered for each person, can be shown again from the Help Centre, and can be switched off in Settings > Money > Getting Started.
 - New manual: documentation/index.html, a single page to open in any browser or print, with installing, updating, tasks that run by themselves, privacy and security, every Help Centre article, the words used, and what is new in each version. It is built from the same articles as the Help Centre (php tools/build-docs.php), so the two always agree.
 - Settings section names are now in Title Case, and the Invoice PDF Look tips point to the right place for your business details.
+- Update packages after this one can carry the manual (the documentation folder), so it stays up to date on your site.
 - Tests: Money 67, core 65.
 
 ## 1.46.0 - Demo data for trials

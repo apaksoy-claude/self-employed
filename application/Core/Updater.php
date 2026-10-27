@@ -23,7 +23,7 @@ final class Updater
     public const MAX_BYTES = 268435456; // 256 MB once unpacked
 
     /** Top-level folders and files a package may contain. */
-    private const ALLOWED_DIRS = ['application', 'assets', 'tools', 'docs'];
+    private const ALLOWED_DIRS = ['application', 'assets', 'tools', 'docs', 'documentation'];
     private const ALLOWED_ROOT_FILES = ['index.php', 'ap', 'README.md', 'CHANGELOG.md'];
     /** Paths that belong to the site and are never replaced or deleted (a package that lists them just has them skipped). */
     private const PROTECTED = ['application/config/', 'application/storage/', 'uploads/', 'assets/uploads/', '.htaccess', '.env'];
