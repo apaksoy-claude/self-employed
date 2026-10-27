@@ -1,0 +1,10 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+// AP Framework command line tool. Everything here is also available in the admin under System > Tools.
+if (PHP_SAPI !== 'cli') {
+    exit('This tool runs from the command line only.');
+}
+require __DIR__ . '/application/bootstrap.php';
+exit(\AP\Core\Cli::run($argv));

@@ -1,0 +1,18 @@
+# AP Framework: lives in the folder your domain points to.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Private folders and files can never be requested from the browser
+    RewriteRule ^(application|tools|tests|docs)(/|$) - [F,L]
+    RewriteRule ^(ap|VERSION|CHANGELOG\.md|README\.md)$ - [F,L]
+
+    # Never run PHP from the assets folder
+    RewriteRule ^assets/.*\.(php|phtml|phar)$ - [F,L]
+
+    # Everything that is not a real file goes to index.php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>

@@ -1,0 +1,86 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'name' => 'settings',
+    'label' => 'Settings',
+    'version' => '1.4.3',
+    'description' => 'Grouped settings pages generated from setting definitions that modules declare.',
+    'core' => true,
+    'routes' => 'routes.php',
+    'permissions' => [
+        'settings.view' => 'View settings',
+        'settings.edit' => 'Change settings',
+    ],
+    'setting_groups' => [
+        'general' => ['label' => 'General', 'icon' => 'fa-house', 'category' => 'Site', 'order' => 1, 'description' => 'The site name, the main contact address and how dates are shown.', 'keywords' => 'arrange layout drag drop move cards columns half width rearrange order',
+            'tips' => ['The site name appears in page titles, emails and the admin.', 'Changing the time zone changes how every date is shown, not the dates themselves.']],
+        'contact' => ['label' => 'Contact details', 'icon' => 'fa-address-book', 'category' => 'Site', 'order' => 2, 'description' => 'How visitors can reach you, and your opening hours.'],
+        'legal' => ['label' => 'Company and legal', 'icon' => 'fa-scale-balanced', 'category' => 'Site', 'order' => 3, 'description' => 'Company details and links to your privacy policy and terms.'],
+        'maintenance' => ['label' => 'Maintenance', 'icon' => 'fa-person-digging', 'category' => 'Site', 'order' => 4, 'description' => 'Show visitors a "back soon" page while you work on the site.',
+            'tips' => ['While maintenance mode is on, signed-in staff still see the normal site.', 'Search engines are told the site will be back soon, so rankings are not affected by a short break.']],
+        'localisation' => ['label' => 'Language and region', 'icon' => 'fa-language', 'category' => 'Look and languages', 'order' => 10, 'description' => 'Which language visitors get and how the calendar starts.'],
+        'languages_page' => ['label' => 'Languages and wording', 'icon' => 'fa-spell-check', 'category' => 'Look and languages', 'order' => 11, 'url' => 'languages', 'permission' => 'languages.view', 'info' => 'Languages offered on the site and the admin, and the wording for each one.', 'keywords' => 'translations wording'],
+        'email' => ['label' => 'Email', 'icon' => 'fa-envelope', 'category' => 'Email', 'order' => 20, 'description' => 'How emails are sent, who they come from and how they look.',
+            'tips' => ['Hostinger email: server smtp.hostinger.com, port 465 with SSL, your full email address and its password.', 'Gmail: turn on 2-step verification and use an app password, not your normal password.',
+                'Send from an address on your own domain, and add the SPF and DKIM records your email provider gives you, so emails do not land in spam.', 'If a test fails with a certificate error, try the other port.']],
+        'email_templates' => ['label' => 'Email templates', 'icon' => 'fa-file-lines', 'category' => 'Email', 'order' => 21, 'url' => 'mail/templates', 'permission' => 'mail.templates', 'info' => 'Edit the wording of every email the website sends.', 'keywords' => 'emails wording messages'],
+        'security' => ['label' => 'Security', 'icon' => 'fa-shield-halved', 'category' => 'Security and access', 'order' => 30, 'description' => 'Signing in, passwords and how browsers protect the site.',
+            'keywords' => 'login lockout password two factor 2fa authenticator captcha robot turnstile recaptcha hcaptcha remember session csp hsts',
+            'tips' => ['Passwords are stored as one-way hashes; nobody can read them. Keys on this page are encrypted with your APP_KEY.', 'Two-step sign-in is the best protection against stolen passwords.', 'Spam words, blocked addresses and the spam log are in Content > Spam.']],
+        'uploads' => ['label' => 'Limits and uploads', 'icon' => 'fa-cloud-arrow-up', 'category' => 'Security and access', 'order' => 31, 'description' => 'How big uploaded files may be and which types are allowed.'],
+        'roles_page' => ['label' => 'Roles and access', 'icon' => 'fa-user-shield', 'category' => 'Security and access', 'order' => 32, 'url' => 'roles/access', 'permission' => 'roles.manage'],
+        'cache' => ['label' => 'Cache', 'nav_label' => 'Cache settings', 'icon' => 'fa-sliders', 'hub' => 'system', 'category' => 'Maintenance', 'order' => 14.5, 'description' => 'Keeps the results of slow work for a while so pages load faster.'],
+        'scheduler' => ['label' => 'Scheduled task', 'nav_label' => 'Scheduled task settings', 'icon' => 'fa-sliders', 'hub' => 'system', 'category' => 'Automation', 'order' => 21.5, 'description' => 'How regular tasks such as clean-ups and email sending are started.'],
+        'queue' => ['label' => 'Background job', 'nav_label' => 'Background job settings', 'icon' => 'fa-sliders', 'hub' => 'system', 'category' => 'Automation', 'order' => 22.5, 'description' => 'Work that runs in the background, such as sending emails.'],
+        'logs' => ['label' => 'Log', 'nav_label' => 'Log settings', 'icon' => 'fa-sliders', 'hub' => 'system', 'category' => 'Logs', 'order' => 39, 'description' => 'How long errors and staff activity are kept.'],
+    ],
+    'settings' => [
+        // General
+        'general.site_name' => ['group' => 'general', 'section' => 'Site details', 'width' => 'half', 'label' => 'Site name', 'type' => 'text', 'default' => 'My Website', 'rules' => 'required|string|max:120', 'help' => 'Shown in the browser tab, emails and the admin panel.', 'order' => 1],
+        'general.tagline' => ['group' => 'general', 'section' => 'Site details', 'width' => 'half', 'label' => 'Tagline', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:190', 'help' => 'A short sentence describing the site.', 'order' => 2],
+        'general.favicon' => ['group' => 'general', 'section' => 'Site details', 'label' => 'Browser tab icon (favicon)', 'type' => 'image', 'default' => '', 'rules' => 'nullable|string|max:500', 'help' => 'The small picture on the browser tab. Square works best (PNG, SVG or ICO). The admin panel uses it too unless you choose another in Settings > Admin Panel.', 'order' => 2.5],
+        'general.timezone' => ['group' => 'general', 'section' => 'Time and dates', 'width' => 'half', 'label' => 'Timezone', 'type' => 'timezone', 'default' => 'Europe/London', 'rules' => 'required', 'help' => 'Dates in the admin and on the site are shown in this timezone.', 'order' => 3],
+        'general.date_format' => ['group' => 'general', 'section' => 'Time and dates', 'width' => 'half', 'label' => 'Date format', 'type' => 'select', 'default' => 'd M Y', 'options' => ['d M Y' => '16 Oct 2026', 'd/m/Y' => '16/10/2026', 'm/d/Y' => '10/16/2026', 'Y-m-d' => '2026-10-16', 'j F Y' => '16 October 2026'], 'rules' => 'required', 'help' => 'How dates are written.', 'order' => 4],
+        'general.admin_email' => ['group' => 'general', 'section' => 'Site details', 'width' => 'half', 'label' => 'Site owner email', 'type' => 'email', 'default' => '', 'rules' => 'nullable|email', 'help' => 'Alerts and notifications are sent here.', 'order' => 5],
+        // Contact
+        'contact.email' => ['group' => 'contact', 'section' => 'Contact details', 'width' => 'half', 'label' => 'Public email', 'type' => 'email', 'default' => '', 'rules' => 'nullable|email', 'help' => 'Shown to visitors on the contact details.', 'order' => 1],
+        'contact.phone' => ['group' => 'contact', 'section' => 'Contact details', 'width' => 'half', 'label' => 'Phone', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:50', 'order' => 2],
+        'contact.address' => ['group' => 'contact', 'section' => 'Contact details', 'label' => 'Address', 'type' => 'textarea', 'default' => '', 'rules' => 'nullable|string|max:500', 'order' => 3],
+        'contact.opening_hours' => ['group' => 'contact', 'section' => 'Opening hours', 'label' => 'Opening hours', 'type' => 'repeater', 'default' => [], 'add_label' => 'Add opening hours', 'max_rows' => 14,
+            'fields' => ['days' => ['label' => 'Days', 'placeholder' => 'Monday to Friday'], 'hours' => ['label' => 'Hours', 'placeholder' => '9:00 to 17:00'], 'closed' => ['label' => 'Closed', 'type' => 'checkbox', 'width' => 'xs']],
+            'help' => 'One row per day or group of days. Tick "Closed" for days you do not open.', 'order' => 4],
+        // Localisation
+        'localisation.default_language' => ['group' => 'localisation', 'section' => 'Language', 'width' => 'half', 'label' => 'Default language', 'type' => 'select', 'default' => 'en', 'options' => ['en' => 'English'], 'rules' => 'required', 'help' => 'The language visitors get when they have not chosen one. Add more under Languages.', 'order' => 1],
+        'localisation.first_day_of_week' => ['group' => 'localisation', 'section' => 'Calendar', 'width' => 'half', 'label' => 'First day of the week', 'type' => 'select', 'default' => '1', 'options' => ['1' => 'Monday', '0' => 'Sunday', '6' => 'Saturday'], 'rules' => 'required', 'order' => 2],
+        // Email
+        'email.from_name' => ['group' => 'email', 'section' => 'Sender', 'section_icon' => 'fa-user-pen', 'width' => 'half', 'label' => 'Sender name', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:120', 'help' => 'The name people see on emails from the site. Leave blank to use the site name.', 'order' => 30],
+        'email.from_address' => ['group' => 'email', 'section' => 'Sender', 'width' => 'half', 'label' => 'Sender email address', 'type' => 'email', 'default' => '', 'rules' => 'nullable|email', 'help' => 'Use an address on your own domain so emails are not marked as spam.', 'order' => 31],
+        'email.reply_to' => ['group' => 'email', 'section' => 'Sender', 'width' => 'half', 'label' => 'Reply-to address', 'type' => 'email', 'default' => '', 'rules' => 'nullable|email', 'order' => 32],
+        // Uploads
+        'uploads.max_size_mb' => ['group' => 'uploads', 'section' => 'Uploads', 'width' => 'half', 'label' => 'Maximum upload size (MB)', 'type' => 'number', 'default' => 8, 'rules' => 'integer|min:1|max:512', 'help' => 'Your hosting may impose a lower limit.', 'order' => 1],
+        'uploads.allowed_extensions' => ['group' => 'uploads', 'section' => 'Uploads', 'label' => 'Allowed file types', 'type' => 'repeater',
+            'default' => array_map(static fn($e) => ['ext' => $e], ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip']), 'add_label' => 'Add a file type', 'max_rows' => 60,
+            'fields' => ['ext' => ['label' => 'File ending', 'placeholder' => 'pdf', 'rules' => 'regex:/^\.?[A-Za-z0-9]{1,10}$/']],
+            'help' => 'One file ending per row, without the dot. Scripts such as php, js or html can never be uploaded, even if they are listed here.', 'order' => 2],
+        'uploads.image_max_width' => ['group' => 'uploads', 'section' => 'Images', 'width' => 'half', 'label' => 'Largest image width (px)', 'type' => 'number', 'default' => 2400, 'rules' => 'integer|min:200|max:10000', 'help' => 'Bigger images are shrunk to this width when uploaded.', 'order' => 3],
+        // Security
+        'security.csp_mode' => ['group' => 'security', 'section' => 'Browser protection', 'section_icon' => 'fa-globe', 'width' => 'half', 'label' => 'Content Security Policy', 'type' => 'select', 'default' => 'basic', 'options' => ['basic' => 'On (recommended)', 'report' => 'Report only (does not block)', 'off' => 'Off'], 'rules' => 'required|in:basic,report,off', 'help' => 'Tells browsers which scripts may run. Switch to "Report only" or "Off" if a third-party script stops working.', 'order' => 40],
+        'security.hsts' => ['group' => 'security', 'section' => 'Browser protection', 'label' => 'Force HTTPS in browsers (HSTS)', 'type' => 'checkbox', 'default' => false, 'help' => 'Only turn this on when your whole site works over https://. Browsers remember it for a year.', 'order' => 41],
+        // Maintenance
+        'maintenance.enabled' => ['group' => 'maintenance', 'section' => 'Maintenance mode', 'label' => 'Maintenance mode', 'type' => 'checkbox', 'default' => false, 'help' => 'Visitors see a "back soon" page. The admin panel keeps working.', 'order' => 1],
+        'maintenance.title' => ['group' => 'maintenance', 'section' => 'Maintenance page', 'label' => 'Page title', 'type' => 'text', 'default' => 'Back soon', 'rules' => 'required|string|max:120', 'order' => 2],
+        'maintenance.message' => ['group' => 'maintenance', 'section' => 'Maintenance page', 'label' => 'Message for visitors', 'type' => 'textarea', 'default' => 'We are doing some maintenance and will be back shortly.', 'rules' => 'required|string|max:1000', 'order' => 3],
+        'maintenance.allow_admins' => ['group' => 'maintenance', 'section' => 'Maintenance mode', 'label' => 'Logged-in staff can still see the site', 'type' => 'checkbox', 'default' => true, 'help' => 'Lets you preview the site while visitors see the maintenance page.', 'order' => 4],
+        'maintenance.allowed_ips' => ['group' => 'maintenance', 'section' => 'Who can still see the site', 'label' => 'Allowed internet addresses', 'type' => 'repeater', 'default' => [], 'add_label' => 'Add an address', 'max_rows' => 50,
+            'fields' => ['ip' => ['label' => 'IP address', 'placeholder' => '203.0.113.7', 'rules' => 'ip'], 'note' => ['label' => 'Whose is it?', 'placeholder' => 'Office broadband']],
+            'help' => 'These addresses always see the site, even during maintenance.', 'order' => 5],
+        // Legal
+        'legal.company_name' => ['group' => 'legal', 'section' => 'Company details', 'width' => 'half', 'label' => 'Company name', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:190', 'order' => 1],
+        'legal.company_number' => ['group' => 'legal', 'section' => 'Company details', 'width' => 'half', 'label' => 'Company or registration number', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:60', 'order' => 2],
+        'legal.vat_number' => ['group' => 'legal', 'section' => 'Company details', 'width' => 'half', 'label' => 'VAT number', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:60', 'order' => 3],
+        'legal.privacy_url' => ['group' => 'legal', 'section' => 'Legal pages', 'width' => 'half', 'label' => 'Privacy policy link', 'type' => 'text', 'default' => '/privacy', 'rules' => 'nullable|string|max:300', 'help' => 'A page address such as /privacy or a full https:// link.', 'order' => 4],
+        'legal.terms_url' => ['group' => 'legal', 'section' => 'Legal pages', 'width' => 'half', 'label' => 'Terms and conditions link', 'type' => 'text', 'default' => '/terms', 'rules' => 'nullable|string|max:300', 'order' => 5],
+    ],
+    'widgets' => [],
+];

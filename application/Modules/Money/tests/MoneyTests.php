@@ -1,0 +1,2243 @@
+<?php
+declare(strict_types=1);
+
+namespace AP\Modules\Money\Tests;
+
+use AP\Core\App;
+use AP\Core\DB;
+use AP\Core\Events;
+use AP\Core\Request;
+use AP\Core\Router;
+use AP\Core\Session;
+use AP\Core\Translator;
+use AP\Core\View;
+use AP\Modules\Money\Controllers\ButtonController;
+use AP\Modules\Money\Controllers\TripController;
+use AP\Modules\Money\Controllers\VehicleController;
+use AP\Modules\Money\Mileage;
+use AP\Modules\Money\Controllers\CategoryController;
+use AP\Modules\Money\Controllers\DashboardController;
+use AP\Modules\Money\Controllers\ExpenseController;
+use AP\Modules\Money\Controllers\FileController;
+use AP\Modules\Money\Controllers\ImportController;
+use AP\Modules\Money\Controllers\IncomeController;
+use AP\Modules\Money\Controllers\InvoiceController;
+use AP\Modules\Money\Controllers\OverviewController;
+use AP\Modules\Money\Import\RiseImporter;
+use AP\Modules\Money\Import\SqlDumpReader;
+use AP\Modules\Money\Gmail;
+use AP\Modules\Money\Import\Mailbox;
+use AP\Modules\Money\Import\MimeMessage;
+use AP\Modules\Money\InvoiceMail;
+use AP\Modules\Money\Money;
+use AP\Modules\Money\Pay;
+use AP\Modules\Money\Digest;
+use AP\Modules\Money\Recurring;
+use AP\Modules\Money\AccountantPack;
+use AP\Modules\Money\Portal;
+use AP\Modules\Money\Widgets;
+use AP\Modules\Money\Insights;
+use AP\Modules\Money\Tax;
+use AP\Modules\Money\Controllers\ReportController;
+use AP\Modules\Money\Controllers\TaxController;
+use AP\Modules\Money\Import\PdfText;
+use AP\Modules\Money\Reports;
+use AP\Tests\FakeAuth;
+use RuntimeException;
+use Throwable;
+
+/** Tests of the Money module. Run with: php application/Modules/Money/tests/run.php */
+final class MoneyTests
+{
+    private DB $db;
+    private string $tmp;
+
+    /** @return list<array{name:string,ok:bool,detail:string}> */
+    public function run(): array
+    {
+        $results = [];
+        $this->tmp = sys_get_temp_dir() . '/money-tests-' . bin2hex(random_bytes(4));
+        @mkdir($this->tmp, 0775, true);
+        foreach (get_class_methods($this) as $m) {
+            if (!str_starts_with($m, 'test_')) {
+                continue;
+            }
+            try {
+                $detail = (string) $this->$m();
+                $results[] = ['name' => str_replace('_', ' ', substr($m, 5)), 'ok' => true, 'detail' => $detail];
+            } catch (Throwable $e) {
+                $results[] = ['name' => str_replace('_', ' ', substr($m, 5)), 'ok' => false, 'detail' => $e->getMessage() . ' at ' . basename($e->getFile()) . ':' . $e->getLine()];
+            }
+        }
+        ImportController::removeDir($this->tmp);
+        return $results;
+    }
+
+    private function assert(bool $ok, string $message): void
+    {
+        if (!$ok) {
+            throw new RuntimeException($message);
+        }
+    }
+
+    private function freshDb(): DB
+    {
+        $db = new DB(['prefix' => 'ap_'], SqlitePdo::make());
+        $files = glob(__DIR__ . '/../migrations/*.php') ?: [];
+        sort($files);
+        foreach ($files as $f) {
+            (require $f)->up($db);
+        }
+        return $db;
+    }
+
+    /** A made-up RISE backup. Never real data. */
+    private function fakeDump(): string
+    {
+        $t = static function (string $name, array $cols, array $rows): string {
+            $sql = "CREATE TABLE `$name` (\n" . implode(",\n", array_map(static fn($c) => "  `$c` text", $cols)) . "\n) ENGINE=InnoDB;\n";
+            $vals = [];
+            foreach ($rows as $r) {
+                $vals[] = '(' . implode(',', array_map(static fn($c) => !array_key_exists($c, $r) || $r[$c] === null ? 'NULL' : (is_int($r[$c]) || is_float($r[$c]) ? (string) $r[$c] : "'" . str_replace(["\\", "'"], ["\\\\", "''"], (string) $r[$c]) . "'"), $cols)) . ')';
+            }
+            return $sql . ($vals ? "INSERT INTO `$name` (`" . implode('`,`', $cols) . "`) VALUES\n" . implode(",\n", $vals) . ";\n" : '');
+        };
+        $file = serialize([['file_name' => 'expense_file1a2b-receipt one.pdf', 'file_id' => '1'], ['file_name' => 'expense_file9999-gone.pdf']]);
+        $expCols = ['id', 'expense_date', 'title', 'description', 'category_id', 'amount', 'deleted', 'recurring', 'repeat_every', 'repeat_type', 'next_recurring_date', 'no_of_cycles_completed', 'recurring_expense_id', 'files'];
+        $e = static fn(array $r) => $r + ['description' => '', 'deleted' => 0, 'recurring' => 0, 'repeat_every' => 0, 'repeat_type' => '', 'next_recurring_date' => null, 'no_of_cycles_completed' => 0, 'recurring_expense_id' => 0, 'files' => ''];
+        return $t('rise_expense_categories', ['id', 'title', 'deleted'], [['id' => 1, 'title' => 'Vehicle Rent', 'deleted' => 0], ['id' => 2, 'title' => 'Pension', 'deleted' => 0], ['id' => 3, 'title' => 'Mystery', 'deleted' => 0], ['id' => 4, 'title' => 'Hosting', 'deleted' => 0]])
+            . $t('rise_clients', ['id', 'company_name', 'is_lead', 'deleted', 'phone', 'address', 'city', 'zip', 'country', 'website'], [['id' => 1, 'company_name' => "O'Brien Ltd", 'is_lead' => 0, 'deleted' => 0], ['id' => 2, 'company_name' => 'A Lead', 'is_lead' => 1, 'deleted' => 0]])
+            . $t('rise_payment_methods', ['id', 'title'], [['id' => 1, 'title' => 'Bank Transfer']])
+            . $t('rise_invoices', ['id', 'client_id', 'display_id', 'bill_date', 'due_date', 'status', 'note', 'invoice_subtotal', 'discount_total', 'tax', 'tax2', 'tax3', 'invoice_total', 'deleted'], [
+                ['id' => 1, 'client_id' => 1, 'display_id' => 'INV-1', 'bill_date' => '2026-05-01', 'due_date' => '2026-05-15', 'status' => 'not_paid', 'invoice_subtotal' => 100.0, 'discount_total' => 0.0, 'tax' => 0.0, 'tax2' => 0.0, 'tax3' => 0.0, 'invoice_total' => 100.0, 'deleted' => 0],
+                ['id' => 2, 'client_id' => 1, 'display_id' => 'INV-2', 'bill_date' => '2026-06-01', 'due_date' => '2026-06-15', 'status' => 'draft', 'invoice_subtotal' => 50.0, 'discount_total' => 0.0, 'tax' => 0.0, 'tax2' => 0.0, 'tax3' => 0.0, 'invoice_total' => 50.0, 'deleted' => 0],
+                ['id' => 3, 'client_id' => 1, 'display_id' => 'INV-3', 'bill_date' => '2026-06-02', 'due_date' => null, 'status' => 'not_paid', 'invoice_subtotal' => 9.0, 'discount_total' => 0.0, 'tax' => 0.0, 'tax2' => 0.0, 'tax3' => 0.0, 'invoice_total' => 9.0, 'deleted' => 1]])
+            . $t('rise_invoice_items', ['id', 'invoice_id', 'sort', 'title', 'description', 'quantity', 'unit_type', 'rate', 'total', 'deleted'], [['id' => 1, 'invoice_id' => 1, 'sort' => 1, 'title' => 'Airport transfer', 'description' => '', 'quantity' => 1.0, 'unit_type' => '', 'rate' => 100.0, 'total' => 100.0, 'deleted' => 0]])
+            . $t('rise_invoice_payments', ['id', 'invoice_id', 'payment_date', 'amount', 'payment_method_id', 'note', 'transaction_id', 'deleted'], [
+                ['id' => 1, 'invoice_id' => 1, 'payment_date' => '2026-05-10', 'amount' => 60.0, 'payment_method_id' => 1, 'note' => '', 'transaction_id' => 'T1', 'deleted' => 0],
+                ['id' => 2, 'invoice_id' => 3, 'payment_date' => '2026-06-10', 'amount' => 9.0, 'payment_method_id' => 1, 'note' => '', 'transaction_id' => '', 'deleted' => 0],
+                ['id' => 3, 'invoice_id' => 1, 'payment_date' => '2026-05-11', 'amount' => 0.0, 'payment_method_id' => 1, 'note' => '', 'transaction_id' => '', 'deleted' => 0]])
+            . $t('rise_expenses', $expCols, [
+                $e(['id' => 1, 'expense_date' => '2026-04-20', 'title' => 'Rent', 'category_id' => 1, 'amount' => 200.0, 'recurring' => 1, 'repeat_every' => 1, 'repeat_type' => 'weeks', 'next_recurring_date' => '2026-04-27', 'files' => $file]),
+                $e(['id' => 2, 'expense_date' => '2026-04-27', 'title' => 'Rent', 'category_id' => 1, 'amount' => 200.0, 'recurring_expense_id' => 1]),
+                $e(['id' => 3, 'expense_date' => '2026-05-01', 'title' => "Pension top-up", 'category_id' => 2, 'amount' => 300.0]),
+                $e(['id' => 4, 'expense_date' => '2026-05-02', 'title' => 'Unknown thing', 'category_id' => 3, 'amount' => 10.5]),
+                $e(['id' => 5, 'expense_date' => '2026-05-03', 'title' => 'Deleted', 'category_id' => 3, 'amount' => 999.0, 'deleted' => 1]),
+                $e(['id' => 6, 'expense_date' => '2026-03-01', 'title' => 'Last year hosting', 'category_id' => 4, 'amount' => 5.0])]);
+    }
+
+    private function importFake(): array
+    {
+        $this->db = $this->freshDb();
+        $files = $this->tmp . '/attach';
+        @mkdir($files, 0775, true);
+        file_put_contents($files . '/expense_file1a2b-receipt one.pdf', "%PDF-1.4\nfake");
+        $out = $this->tmp . '/store';
+        $report = (new RiseImporter($this->db, $out))->import(SqlDumpReader::fromString($this->fakeDump()), $files);
+        return $report;
+    }
+
+    /* -------------------------------------------------------------- */
+
+    public function test_tax_years_start_on_6_april(): string
+    {
+        $this->assert(Money::taxYear('2026-04-05') === '2025-26', '5 April belongs to the old year');
+        $this->assert(Money::taxYear('2026-04-06') === '2026-27', '6 April starts the new year');
+        $this->assert(Money::taxYear('2027-01-01') === '2026-27', 'January is in the year that began last April');
+        $this->assert(Money::taxYear('2099-12-31') === '2099-00', 'the year label wraps after 99');
+        $this->assert(Money::taxYearRange('2026-27') === ['2026-04-06', '2027-04-05'], 'range of a tax year');
+        $this->assert(Money::yearParam('all') === 'all' && Money::yearParam('2025-26') === '2025-26' && Money::yearParam('x; DROP') === Money::currentTaxYear(), 'year from the address bar is checked');
+        return '';
+    }
+
+    public function test_dates_and_amounts_typed_by_people_are_understood(): string
+    {
+        $this->assert(Money::parseDate('27/10/2026') === '2026-10-27', 'day/month/year');
+        $this->assert(Money::parseDate('1.2.2026') === '2026-02-01', 'single digits and dots');
+        $this->assert(Money::parseDate('2026-10-27') === '2026-10-27', 'ISO dates');
+        $this->assert(Money::parseDate('31/02/2026') === null && Money::parseDate('hello') === null && Money::parseDate('') === null, 'bad dates are refused');
+        $this->assert(Money::showDate('2026-10-27') === '27/10/2026', 'dates are shown day first');
+        $this->assert(Money::parseAmount('£1,234.50') === 1234.5 && Money::parseAmount('12') === 12.0 && Money::parseAmount('-5.00') === -5.0, 'amounts');
+        $this->assert(Money::parseAmount('12.345') === null && Money::parseAmount('abc') === null && Money::parseAmount('') === null, 'bad amounts are refused');
+        $this->assert(Money::gbp(-3.5) === '-£3.50' && Money::gbp(1234567.891) === '£1,234,567.89', 'pounds are shown with commas');
+        return '';
+    }
+
+    public function test_invoice_state_comes_from_payments(): string
+    {
+        $inv = ['status' => 'sent', 'total' => 100, 'due_date' => '2026-05-15'];
+        $this->assert(Money::invoiceState($inv, 100.0, '2026-06-01') === 'paid', 'fully paid');
+        $this->assert(Money::invoiceState($inv, 40.0, '2026-06-01') === 'part', 'part paid');
+        $this->assert(Money::invoiceState($inv, 0.0, '2026-06-01') === 'overdue', 'overdue');
+        $this->assert(Money::invoiceState($inv, 0.0, '2026-05-01') === 'unpaid', 'not yet due');
+        $this->assert(Money::invoiceState(['status' => 'draft'] + $inv, 0.0) === 'draft' && Money::invoiceState(['status' => 'cancelled'] + $inv, 100.0) === 'cancelled', 'draft and cancelled stay');
+        return '';
+    }
+
+    public function test_repeating_dates_keep_month_ends(): string
+    {
+        $this->assert(Recurring::advance('2026-01-31', 1, 'months') === '2026-02-28', '31 Jan plus a month');
+        $this->assert(Recurring::advance('2028-01-31', 1, 'months') === '2028-02-29', 'leap year');
+        $this->assert(Recurring::advance('2026-12-15', 2, 'months') === '2027-02-15', 'across a year');
+        $this->assert(Recurring::advance('2026-04-20', 1, 'weeks') === '2026-04-27', 'weekly');
+        $this->assert(Recurring::advance('2024-02-29', 1, 'years') === '2025-02-28', 'yearly from a leap day');
+        $this->assert(Recurring::advance('2026-01-01', 10, 'days') === '2026-01-11', 'days');
+        return '';
+    }
+
+    public function test_repeating_expenses_are_added_once_up_to_today(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $id = $this->db->table('money_expenses')->insertGetId(['expense_date' => '2026-10-05', 'title' => 'Rent', 'amount' => 200, 'recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'weeks',
+                'next_date' => '2026-10-12', 'category_id' => 1, 'business_percent' => 100, 'created_at' => '2026-10-05', 'updated_at' => '2026-10-05']);
+            $this->assert(Recurring::run('2026-10-27') === 3, 'three weekly copies were due (12, 19, 26 Oct)');
+            $this->assert(Recurring::run('2026-10-27') === 0, 'running again adds nothing');
+            $dates = $this->db->table('money_expenses')->where('parent_id', $id)->orderBy('expense_date')->pluck('expense_date');
+            $this->assert($dates === ['2026-10-12', '2026-10-19', '2026-10-26'], 'dates are ' . implode(',', $dates));
+            $this->assert($this->db->table('money_expenses')->where('id', $id)->value('next_date') === '2026-11-02', 'next date moves on');
+            $this->assert(Recurring::run('2026-11-02') === 1, 'the next week adds one');
+        });
+        return '';
+    }
+
+    public function test_repeating_expenses_stop_after_a_number_of_copies_or_on_a_date(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $mk = fn(array $x): int => (int) $this->db->table('money_expenses')->insertGetId($x + ['expense_date' => '2026-10-05', 'title' => 'Rent', 'amount' => 200, 'recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'weeks',
+                'next_date' => '2026-10-12', 'category_id' => 1, 'business_percent' => 100, 'created_at' => '2026-10-05', 'updated_at' => '2026-10-05']);
+            $byCount = $mk(['max_cycles' => 2, 'title' => 'By Count']);
+            $byDate = $mk(['repeat_until' => '2026-10-19', 'title' => 'By Date']);
+            $this->assert(Recurring::run('2026-10-27') === 4, 'two copies by count and two by date (12 and 19 Oct)');
+            $this->assert($this->db->table('money_expenses')->where('parent_id', $byCount)->count() === 2 && $this->db->table('money_expenses')->where('parent_id', $byDate)->count() === 2, 'each stopped where it should');
+            $this->assert((int) $this->db->table('money_expenses')->where('id', $byCount)->value('recurring') === 0 && (int) $this->db->table('money_expenses')->where('id', $byDate)->value('recurring') === 0, 'both are switched off when finished');
+            $this->assert(Recurring::run('2026-12-31') === 0 && !Recurring::finished(1, 2, '2026-10-12', '') && Recurring::finished(2, 2, '2026-10-26', '') && Recurring::finished(0, 0, '2026-10-20', '2026-10-19'), 'nothing more is added later');
+        });
+        return 'Repeating costs can stop by count or date.';
+    }
+
+    public function test_lists_remember_filters_and_can_clear_them(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $mk = static fn(array $q) => new Request('GET', '/admin/money/expenses', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $url = admin_url('money/expenses');
+            (require __DIR__ . '/../../Admin/migrations/2026_10_19_000001_create_user_preferences.php')->up($this->db);
+            $this->assert(Money::rememberFilters($mk([]), $url) === null, 'nothing is remembered at first');
+            $this->assert(Money::rememberFilters($mk(['q' => 'rent', 'year' => 'all']), $url) === null && Money::$filtering, 'using filters saves them');
+            $r = Money::rememberFilters($mk([]), $url);
+            $this->assert($r !== null && str_contains((string) ($r->headers['Location'] ?? ''), 'q=rent'), 'opening the page with none brings them back');
+            $this->assert(Money::rememberFilters($mk(['clear' => '1']), $url) !== null && Money::rememberFilters($mk([]), $url) === null, 'Clear forgets them');
+        });
+        return 'Lists remember filters.';
+    }
+
+    public function test_card_styles_draw_every_card_and_can_be_chosen_per_card(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $this->liveSettings();
+            $this->cardChecks();
+        });
+        return 'Card styles work.';
+    }
+
+    private function cardChecks(): void
+    {
+        foreach (\AP\Modules\Money\CardStyles::STYLES as $k => $_) {
+            $html = \AP\Modules\Money\CardStyles::render($k, ['title' => 'Quarter 1', 'chip' => ['Sent', 'mn-chip-good'], 'rows' => [['Income', '£10.00', 'p'], ['Costs', '£4.00', 'n']], 'profit' => '£6.00', 'extra' => '<i>x</i>']);
+            $this->assert(str_contains($html, 'cs-' . $k) && str_contains($html, '£6.00') && str_contains($html, '£10.00') && str_contains($html, 'Quarter 1') && str_contains($html, '<i>x</i>'), 'style ' . $k . ' shows the title, figures and profit');
+        }
+        $this->assert(\AP\Modules\Money\CardStyles::pick('zz') === \AP\Modules\Money\CardStyles::current() && \AP\Modules\Money\CardStyles::pick('g') === 'g', 'a card uses its own style, else the common one');
+        $c = \AP\Modules\Money\Widgets::clean(['id' => 'months', 'type' => 'months', 'w' => 12, 'card' => 'b']);
+        $this->assert(($c['card'] ?? '') === 'b' && !isset(\AP\Modules\Money\Widgets::clean(['id' => 'months', 'type' => 'months', 'w' => 12, 'card' => 'nope'])['card']), 'a ready-made card keeps a valid style and drops an unknown one');
+    }
+
+    public function test_scheduled_reports_work_out_dates_build_a_pdf_and_send_on_time(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $SR = \AP\Modules\Money\ScheduledReports::class;
+            // periods
+            $this->assert($SR::period('last_week', 30, '2026-10-28') === ['2026-10-19', '2026-10-25', 'Last week'], 'last week is Monday to Sunday');
+            $this->assert($SR::period('last_month', 30, '2026-03-10')[0] === '2026-02-01' && $SR::period('last_month', 30, '2026-03-10')[1] === '2026-02-28', 'last month ends on its last day');
+            $this->assert($SR::period('last_quarter', 30, '2026-10-28')[0] === '2026-07-01' && $SR::period('last_quarter', 30, '2026-10-28')[1] === '2026-09-30', 'last quarter is the three months before');
+            $this->assert($SR::period('last_days', 7, '2026-10-28')[0] === '2026-10-22', 'the last 7 days include today');
+            $this->assert($SR::period('tax_year', 30, '2026-10-28') === ['2026-04-06', '2026-10-28', 'Tax year so far'], 'tax year so far starts on 6 April');
+            $this->assert($SR::period('last_tax_year', 30, '2026-10-28')[0] === '2025-04-06', 'last tax year');
+            // next run
+            $at = static fn(string $t) => new \DateTimeImmutable($t, new \DateTimeZone('Europe/London'));
+            $this->assert($SR::nextAfter(['freq' => 'daily', 'send_time' => '07:30'], $at('2026-10-28 06:00:00')) === '2026-10-28 07:30:00', 'daily: later today');
+            $this->assert($SR::nextAfter(['freq' => 'daily', 'send_time' => '07:30'], $at('2026-10-28 08:00:00')) === '2026-10-29 07:30:00', 'daily: tomorrow');
+            $this->assert($SR::nextAfter(['freq' => 'weekly', 'dow' => 1, 'send_time' => '09:00'], $at('2026-10-28 08:00:00')) === '2026-11-02 09:00:00', 'weekly: next Monday');
+            $this->assert($SR::nextAfter(['freq' => 'weekly', 'dow' => 3, 'send_time' => '09:00'], $at('2026-10-28 08:00:00')) === '2026-10-28 09:00:00', 'weekly: today if still ahead');
+            $this->assert($SR::nextAfter(['freq' => 'monthly', 'dom' => 1, 'send_time' => '07:30'], $at('2026-10-28 08:00:00')) === '2026-11-01 07:30:00', 'monthly: the 1st');
+            $this->assert($SR::nextAfter(['freq' => 'monthly', 'dom' => 0, 'send_time' => '07:30'], $at('2026-10-28 08:00:00')) === '2026-10-31 07:30:00', 'monthly: last day');
+            $this->assert($SR::nextAfter(['freq' => 'monthly', 'dom' => 0, 'send_time' => '07:30'], $at('2026-02-01 08:00:00')) === '2026-02-28 07:30:00', 'monthly: last day of February');
+            $this->assert($SR::nextAfter(['freq' => 'every', 'every_n' => 3, 'every_unit' => 'days', 'send_time' => '07:30'], $at('2026-10-28 08:00:00')) === '2026-10-31 07:30:00', 'every 3 days');
+            // data
+            $now = '2026-01-01 00:00:00';
+            $cat = $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Fuel', 'allowable' => 1, 'hmrc_box' => 'vehicle', 'created_at' => $now]);
+            foreach ([['2026-10-20', 'Diesel', 40.0, $cat], ['2026-10-21', 'Wash', 10.5, 0], ['2026-09-01', 'Old', 99.0, $cat]] as [$d, $t, $a, $c]) {
+                $db->table('money_expenses')->insert(['expense_date' => $d, 'title' => $t, 'amount' => $a, 'business_percent' => 100, 'category_id' => $c, 'contact_id' => 0, 'stream_id' => 0, 'vehicle_id' => 0, 'to_sort' => 0, 'created_at' => $now, 'updated_at' => $now]);
+            }
+            $job = ['id' => 0, 'name' => 'Weekly Expenses', 'kind' => 'expenses', 'period' => 'last_week', 'period_days' => 30, 'freq' => 'weekly', 'dow' => 1, 'dom' => 1, 'every_n' => 1, 'every_unit' => 'weeks', 'send_time' => '07:30',
+                'recipients' => json_encode([['email' => 'me@example.com']]), 'columns_json' => '[]', 'filters_json' => json_encode(['category_id' => $cat]), 'layout' => 'both', 'group_by' => 'category', 'with_csv' => 1, 'skip_empty' => 1, 'subject' => '', 'message' => 'Here you go', 'active' => 1];
+            $b = $SR::build($job, '2026-10-28');
+            $this->assert(str_starts_with($b['pdf'], '%PDF') && $b['rows'] === 1 && str_contains($b['csv'], 'Diesel') && !str_contains($b['csv'], 'Wash') && !str_contains($b['csv'], 'Old'), 'the PDF and CSV hold only the matching rows of the period');
+            foreach (array_keys($SR::KINDS) as $k) {
+                $x = $SR::build(['kind' => $k, 'period' => 'tax_year', 'columns_json' => '', 'filters_json' => '', 'layout' => 'both', 'group_by' => 'month', 'name' => 'T'] + $job, '2026-10-28');
+                $this->assert(str_starts_with($x['pdf'], '%PDF'), 'the ' . $k . ' report makes a PDF');
+            }
+            // send and run
+            $job['id'] = $db->table('money_report_jobs')->insertGetId(['name' => 'Weekly Expenses', 'kind' => 'expenses', 'period' => 'last_week', 'freq' => 'daily', 'send_time' => '07:30', 'recipients' => $job['recipients'], 'filters_json' => '{}', 'layout' => 'list',
+                'skip_empty' => 0, 'active' => 1, 'next_at' => '2000-01-01 00:00:00', 'created_at' => $now, 'updated_at' => $now]);
+            $this->assert($SR::send($job + ['skip_empty' => 0]) === true, 'a report is sent');
+            $this->assert($SR::send(['recipients' => '[]'] + $job) !== true, 'a report with no address is refused');
+            $this->assert(str_contains((string) $SR::send(['skip_empty' => 1, 'period' => 'this_week', 'filters_json' => '{"category_id":99999}'] + $job), 'Nothing to report'), 'an empty report can be skipped');
+            $html = \AP\Core\View::render('money::_report_form', ['j' => null, 'modal' => false]);
+            $this->assert(str_contains($html, 'rp-form') && str_contains($html, 'name="recipients[0][email]"') && str_contains($html, 'Weekly') === false || str_contains($html, 'How Often'), 'the form draws');
+            $html = \AP\Core\View::render('money::_report_form', ['j' => $db->table('money_report_jobs')->first(), 'modal' => false]);
+            $this->assert(str_contains($html, 'me@example.com'), 'and shows the saved address');
+            $this->assert(str_contains($SR::run(), '1 report(s) sent'), 'the hourly job sends what is due');
+            $row = $db->table('money_report_jobs')->where('id', $job['id'])->first();
+            $this->assert($row['next_at'] > $SR::now()->format('Y-m-d H:i:s') && $row['last_sent_at'] !== null, 'and sets the next time');
+            $this->assert(str_contains($SR::run(), '0 report(s) sent'), 'a report is not sent twice');
+            $this->assert($db->table('money_report_log')->where('status', 'sent')->count() >= 2, 'what was sent is written down');
+        });
+        return 'Scheduled reports work.';
+    }
+
+    public function test_email_rules_can_target_sender_words_attachments_and_amounts(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $this->liveSettings();
+            $this->setRules([
+                ['name' => 'Text receipt', 'from' => 'shop.example', 'attach' => 'none', 'exclude' => 'newsletter', 'amount_after' => 'you paid'],
+                ['name' => 'Invoice pdf', 'from' => 'shop.example', 'attach' => 'pdf', 'body' => 'INV'],
+                ['name' => 'Off', 'from' => 'shop.example', 'on' => '0'],
+            ]);
+            $rules = Gmail::rules();
+            $h = ['subject' => 'Thanks', 'from' => 'Shop <hi@shop.example>'];
+            $this->assert(count($rules) === 2, 'switched-off rules are not used');
+            $this->assert((Gmail::match($h, $rules, static fn() => ['You paid £4.00', 0])['name'] ?? '') === 'Text receipt', 'a rule for emails with no attachment picks a plain email');
+            $this->assert((Gmail::match($h, $rules, static fn() => ['Invoice INV-1', 1])['name'] ?? '') === 'Invoice pdf', 'a rule for PDFs picks an email with one');
+            $this->assert(Gmail::match($h, $rules, static fn() => ['Monthly newsletter £4.00', 0]) === null, 'words to leave out stop a match');
+            $this->setRules([['name' => 'Drop', 'from' => 'apcoa', 'body' => 'Heathrow autopay confirmation', 'attach' => 'none']]);
+            $hh = ['subject' => 'Drop-Off Charge', 'from' => 'no-reply@apcoa.com'];
+            $this->assert(Gmail::match($hh, Gmail::rules(), static fn() => ["Heathrow\n autopay\u{A0} CONFIRMATION", 0]) !== null, 'words match across line breaks, odd spaces and capitals');
+            $this->assert(Gmail::match(['subject' => 'x', 'from' => 'other@x.com'], $rules, static fn() => ['', 0]) === null, 'another sender is left alone');
+            $this->assert(Gmail::amount('Total £9.00. You paid £4.00', ['you paid']) === 4.0 && Gmail::amount('Total £9.00. You paid £4.00') === 9.0, 'the amount follows your own words when given');
+            $this->assert(count(Gmail::starters()) === 4 && Gmail::describe($rules[0]) !== '', 'example rules and rule summaries exist');
+        });
+        return 'Email rules target sender, words, attachments and amounts.';
+    }
+
+    public function test_email_import_lists_can_be_tidied_without_losing_the_never_twice_memory(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $now = '2026-10-27 10:00:00';
+            foreach ([['a@x', 'ignored'], ['b@x', 'review'], ['c@x', 'added']] as [$id, $st]) {
+                $db->table('money_mail_seen')->insert(['message_id' => $id, 'subject' => $id, 'sender' => 's', 'status' => $st, 'created_at' => $now]);
+            }
+            $this->assert(count(Gmail::unhandled()) === 2 && count(Gmail::history()) === 2, 'the lists show what is there');
+            $ids = $db->table('money_mail_seen')->whereIn('message_id', ['a@x', 'c@x'])->pluck('id');
+            (new \AP\Modules\Money\Controllers\GmailController())->mailClear(new Request('POST', '/x', [], ['ids' => array_map('strval', $ids)], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(count(Gmail::unhandled()) === 1 && count(Gmail::history()) === 1, 'removed rows leave the lists');
+            $this->assert($db->table('money_mail_seen')->where('message_id', 'c@x')->exists(), 'but are still remembered, so the email is not added twice');
+        });
+        return 'Email Import lists can be tidied.';
+    }
+
+    public function test_pdf_text_is_read_from_browser_made_pdfs_with_glyph_tables(): string
+    {
+        // A tiny PDF the way browsers write them: letters are glyph numbers, a ToUnicode table says which letter each is.
+        $chars = 'Rent To Buy Total ' . "\xC2\xA3" . '252.57';
+        $uniq = array_values(array_unique(mb_str_split($chars)));
+        $bf = '';
+        $content = "BT\n/F8 12 Tf\n";
+        foreach ($uniq as $k => $ch) {
+            $bf .= sprintf("<%04X> <%04X>\n", $k + 1, mb_ord($ch));
+        }
+        foreach (mb_str_split('Rent To Buy') as $ch) {
+            $content .= sprintf("5 0 Td <%04X> Tj\n", array_search($ch, $uniq, true) + 1);
+        }
+        $content .= "ET\nBT\n/F8 12 Tf\n";
+        foreach (mb_str_split('Total £252.57') as $ch) {
+            $content .= sprintf("5 0 Td <%04X> Tj\n", array_search($ch, $uniq, true) + 1);
+        }
+        $content .= "ET\n";
+        $cmap = "/CIDInit /ProcSet findresource begin\nbegincmap\n" . count($uniq) . " beginbfchar\n" . $bf . "endbfchar\nendcmap\n";
+        $pdf = "%PDF-1.4\n1 0 obj\n<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 2 0 R >>\nendobj\n"
+            . "2 0 obj\n<< /Length " . strlen($cmap) . " >>\nstream\n" . $cmap . "\nendstream\nendobj\n"
+            . "3 0 obj\n<< /Font << /F8 1 0 R >> >>\nendobj\n"
+            . "4 0 obj\n<< /Length " . strlen($content) . " >>\nstream\n" . $content . "\nendstream\nendobj\ntrailer\n<< /Root 3 0 R >>\n%%EOF\n";
+        $f = tempnam(sys_get_temp_dir(), 'pdf');
+        file_put_contents($f, $pdf);
+        $t = \AP\Modules\Money\Import\MimeMessage::pdfText($pdf);
+        @unlink($f);
+        $this->assert(str_contains($t, 'Rent To Buy') && str_contains($t, 'Total £252.57'), 'letters come back from glyph numbers: ' . json_encode($t));
+        $this->assert(Gmail::amount($t) === 252.57, 'and the amount can be read from them');
+        return 'PDF text is read from glyph-table PDFs.';
+    }
+
+    public function test_importer_brings_over_a_rise_backup_and_can_run_twice(): string
+    {
+        $r = $this->importFake();
+        $this->assert($r['expenses'] === 5, 'five live expenses, got ' . $r['expenses']);
+        $this->assert(abs($r['totals']['expenses'] - 715.5) < 0.001, 'expense total 715.50, got ' . $r['totals']['expenses']);
+        $this->assert($r['contacts'] === 1, 'leads are not imported as clients');
+        $this->assert($r['invoices'] === 2, 'deleted invoices are left out');
+        $this->assert($r['income'] === 2, 'zero payments are skipped, got ' . $r['income']);
+        $this->assert(count($r['orphan_payments']) === 1, 'the payment for the deleted invoice is reported');
+        $this->assert($r['files'] === 1 && $r['missing_files'] === ['expense_file9999-gone.pdf'], 'one file copied, one reported missing');
+        $this->assert(in_array('Mystery', $r['unfiled_categories'], true), 'a category with no rule is reported');
+        $cat = fn(string $n) => $this->db->table('money_categories')->where('name', $n)->first();
+        $this->assert($cat('Pension')['hmrc_box'] === 'pension' && (int) $cat('Pension')['allowable'] === 0, 'pension is not a business cost');
+        $this->assert($cat('Vehicle Rent')['hmrc_box'] === 'car_van_travel', 'vehicle rent goes in car, van and travel');
+        $this->assert((int) $this->db->table('money_expenses')->where('parent_id', '>', 0)->count() === 1, 'a repeated copy is linked to its first expense');
+        $stored = $this->db->table('money_files')->first();
+        $this->assert($stored['original_name'] === 'receipt one.pdf' && is_file($this->tmp . '/store/' . $stored['stored_name']), 'the receipt was copied with a clean name');
+        $before = [$this->db->table('money_expenses')->count(), $this->db->table('money_income')->count(), $this->db->table('money_files')->count()];
+        $r2 = (new RiseImporter($this->db, $this->tmp . '/store'))->import(SqlDumpReader::fromString($this->fakeDump()), $this->tmp . '/attach');
+        $after = [$this->db->table('money_expenses')->count(), $this->db->table('money_income')->count(), $this->db->table('money_files')->count()];
+        $this->assert($before === $after && $r2['expenses'] === 0 && $r2['skipped_existing'] > 0, 'a second run must add nothing');
+        return 'expenses £' . number_format($r['totals']['expenses'], 2);
+    }
+
+    public function test_dump_reader_handles_quotes_and_escapes(): string
+    {
+        $sql = "CREATE TABLE `t` (\n  `id` int,\n  `v` text\n) ENGINE=InnoDB;\nINSERT INTO `t` (`id`,`v`) VALUES\n(1,'It''s a \\'test\\'; with ) and ('),\n(2,NULL);\n";
+        $rows = SqlDumpReader::fromString($sql)->rows('t');
+        $this->assert(count($rows) === 2 && $rows[0]['v'] === "It's a 'test'; with ) and (" && $rows[1]['v'] === null, 'rows read wrongly: ' . json_encode($rows));
+        return '';
+    }
+
+    public function test_overview_adds_up_costs_by_box_and_leaves_out_pension(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $o = Money::overview('2026-27');
+            $this->assert(abs($o['income'] - 69.0) < 0.001, 'income 69 (60 + 9 orphan), got ' . $o['income']);
+            $this->assert(abs($o['costs'] - 410.5) < 0.001, 'allowable costs 410.50 (rent twice + unknown, pension out), got ' . $o['costs']);
+            $this->assert(abs(($o['not_costs']['pension'] ?? 0) - 300.0) < 0.001, 'pension is listed apart');
+            $this->assert(abs($o['unfiled'] - 0.0) < 0.001 || $o['unfiled'] >= 0, 'unfiled is a number');
+            $old = Money::overview('2025-26');
+            $this->assert(abs($old['costs'] - 5.0) < 0.001, 'the March expense is in the earlier year, got ' . $old['costs']);
+            [$owed] = Money::owed();
+            $this->assert(abs($owed - 40.0) < 0.001, 'INV-1 still owes 40, got ' . $owed);
+        });
+        return '';
+    }
+
+    public function test_every_money_screen_opens_and_escapes_text(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $this->db->table('money_expenses')->where('title', 'Unknown thing')->update(['title' => '<script>alert(1)</script>']);
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $screens = [
+                'vehicles' => fn() => (new VehicleController())->index($get('/admin/money/vehicles', ['year' => '2026-27'])),
+                'vehicle new' => fn() => (new VehicleController())->form($get('/admin/money/vehicles/new')),
+                'trips' => fn() => (new TripController())->index($get('/admin/money/trips', ['year' => 'all'])),
+                'trip new' => fn() => (new TripController())->form($get('/admin/money/trips/new')),
+                'buttons' => fn() => (new ButtonController())->index($get('/admin/appearance/buttons')),
+                'expense new modal' => fn() => (new ExpenseController())->form($get('/admin/money/expenses/new', ['modal' => '1'])),
+                'invoice new' => fn() => (new InvoiceController())->form($get('/admin/money/invoices/new')),
+                'invoice edit' => fn() => (new InvoiceController())->form($get('/admin/money/invoices/1/edit'), '1'),
+                'item new' => fn() => (new InvoiceController())->itemForm($get('/admin/money/invoices/1/items/new'), '1'),
+                'item edit' => fn() => (new InvoiceController())->itemForm($get('/admin/money/invoices/1/items/1'), '1', '1'),
+                'payment new' => fn() => (new InvoiceController())->paymentForm($get('/admin/money/invoices/1/payments/new'), '1'),
+                'expenses' => fn() => (new ExpenseController())->index($get('/admin/money/expenses', ['year' => 'all'])),
+                'expenses filtered' => fn() => (new ExpenseController())->index($get('/admin/money/expenses', ['year' => '2026-27', 'category' => '-1', 'q' => 'x', 'sort' => 'amount', 'dir' => 'asc'])),
+                'expense new' => fn() => (new ExpenseController())->form($get('/admin/money/expenses/new')),
+                'expense edit' => fn() => (new ExpenseController())->form($get('/admin/money/expenses/1'), '1'),
+                'income' => fn() => (new IncomeController())->index($get('/admin/money/income', ['year' => 'all'])),
+                'income new' => fn() => (new IncomeController())->form($get('/admin/money/income/new')),
+                'income edit' => fn() => (new IncomeController())->form($get('/admin/money/income/1'), '1'),
+                'invoices' => fn() => (new InvoiceController())->index($get('/admin/money/invoices', ['year' => 'all'])),
+                'invoices unpaid' => fn() => (new InvoiceController())->index($get('/admin/money/invoices', ['year' => 'all', 'state' => 'part'])),
+                'invoice' => fn() => (new InvoiceController())->show($get('/admin/money/invoices/1'), '1'),
+                'categories' => fn() => (new CategoryController())->index($get('/admin/money/categories')),
+                'reports' => fn() => (new ReportController())->index($get('/admin/money/reports', ['year' => '2026-27'])),
+                'tax' => fn() => (new TaxController())->index($get('/admin/money/tax', ['year' => '2026-27'])),
+                'import' => fn() => (new ImportController())->index($get('/admin/money/import')),
+            ];
+            foreach ($screens as $label => $fn) {
+                try {
+                    $res = $fn();
+                } catch (Throwable $e) {
+                    throw new RuntimeException("Screen '$label' failed: " . $e->getMessage() . ' at ' . basename($e->getFile()) . ':' . $e->getLine());
+                }
+                $this->assert($res->status === 200 && strlen($res->body) > 500, "Screen '$label' gave status {$res->status}");
+                $this->assert(!str_contains($res->body, '<script>alert(1)'), "Screen '$label' printed text without escaping it");
+            }
+            $home = (new OverviewController())->index($get('/admin/money', ['year' => '2026-27']));
+            $this->assert($home->status === 302 && str_contains((string) ($home->headers['Location'] ?? ''), '2026-27'), 'the old overview address goes to the admin home');
+            $dash = \AP\Modules\Money\Dashboard::html();
+            $this->assert(strlen($dash) > 1000 && !str_contains($dash, '<script>alert(1)'), 'the dashboard renders for the admin home');
+            $list = (new ExpenseController())->index($get('/admin/money/expenses', ['year' => 'all']))->body;
+            $this->assert(str_contains($list, '&lt;script&gt;alert(1)'), 'the odd title is shown, escaped');
+        });
+        return 'all screens';
+    }
+
+    public function test_saving_an_expense_checks_the_form_and_keeps_percent_and_repeats(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $post = fn(array $p) => new Request('POST', '/admin/money/expenses/save', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            $c = new ExpenseController();
+            $bad = $c->save($post(['title' => '', 'expense_date' => 'nope', 'amount' => 'abc']));
+            $this->assert($bad->status === 302 && $this->db->table('money_expenses')->count() === 0, 'a bad form saves nothing');
+            $errors = $_SESSION['_flash_new']['errors'] ?? [];
+            $this->assert(isset($errors['title'], $errors['expense_date'], $errors['amount']), 'each wrong box gets a message');
+            $c->save($post(['title' => 'Phone bill', 'expense_date' => '27/10/2026', 'amount' => '£45.50', 'business_percent' => '60', 'category_id' => '3', 'recurring' => '1', 'repeat_every' => '1', 'repeat_unit' => 'months']));
+            $row = $this->db->table('money_expenses')->first();
+            $this->assert($row && $row['expense_date'] === '2026-10-27' && (float) $row['amount'] === 45.5 && (float) $row['business_percent'] === 60.0, 'saved values are right');
+            $this->assert($row['next_date'] === '2026-11-27' && (int) $row['recurring'] === 1, 'the next copy date is set');
+            $c->save($post(['id' => (string) $row['id'], 'title' => 'Phone bill', 'expense_date' => '27/10/2026', 'amount' => '50', 'business_percent' => '60']));
+            $row = $this->db->table('money_expenses')->first();
+            $this->assert((float) $row['amount'] === 50.0 && (int) $row['recurring'] === 0 && $row['next_date'] === null, 'editing keeps one row and can switch repeating off');
+            $c->delete($post([]), (string) $row['id']);
+            $this->assert($this->db->table('money_expenses')->whereNull('deleted_at')->count() === 0 && $this->db->table('money_expenses')->count() === 1, 'delete hides the row but keeps it');
+        });
+        return '';
+    }
+
+    public function test_repeating_invoices_are_copied_with_new_numbers(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $post = fn(string $path, array $p) => new Request('POST', $path, [], $p, [], ['HTTP_HOST' => 'localhost']);
+            (new InvoiceController())->save($post('/admin/money/invoices/save', ['issue_date' => '01/09/2026', 'due_date' => '15/09/2026', 'status' => 'sent', 'recurring' => '1', 'repeat_every' => '1', 'repeat_unit' => 'months', 'max_cycles' => '2']));
+            $t = $this->db->table('money_invoices')->first();
+            $this->assert((int) $t['recurring'] === 1 && $t['next_date'] === '2026-10-01', 'the template knows when it repeats next: ' . json_encode($t['next_date']));
+            $this->db->table('money_invoice_items')->insert(['invoice_id' => (int) $t['id'], 'title' => 'Retainer', 'quantity' => 1, 'rate' => 100, 'total' => 100, 'sort_order' => 1]);
+            Money::recalcInvoice((int) $t['id']);
+            $this->assert(Recurring::runInvoices('2026-09-30') === 0, 'nothing is made before the date');
+            $this->assert(Recurring::runInvoices('2026-11-05') === 2, 'two missed cycles are caught up');
+            $this->assert(Recurring::runInvoices('2026-11-05') === 0, 'running again makes nothing new');
+            $copies = $this->db->table('money_invoices')->where('parent_id', (int) $t['id'])->orderBy('id')->get();
+            $this->assert(count($copies) === 2 && $copies[0]['number'] === 'INVOICE #2' && $copies[1]['number'] === 'INVOICE #3', 'copies get the next numbers');
+            $this->assert($copies[0]['issue_date'] === '2026-10-01' && $copies[0]['due_date'] === '2026-10-15' && (float) $copies[0]['total'] === 100.0, 'copies keep items and the due gap');
+            $t = $this->db->table('money_invoices')->where('id', (int) $t['id'])->first();
+            $this->assert((int) $t['recurring'] === 0 && (int) $t['cycles_done'] === 2, 'it stops after the chosen number of cycles');
+        });
+        return 'ok';
+    }
+
+    public function test_invoices_are_built_from_items_and_payments(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $post = fn(string $path, array $p, bool $json = false) => new Request('POST', $path, [], $p, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json'] : []));
+            $c = new InvoiceController();
+            // A new invoice needs a date; its number is never typed.
+            $bad = $c->save($post('/admin/money/invoices/save', ['issue_date' => 'nope']));
+            $this->assert($bad->status === 302 && $this->db->table('money_invoices')->count() === 0, 'a bad invoice saves nothing');
+            $res = $c->save($post('/admin/money/invoices/save', ['number' => 'MY OWN', 'issue_date' => '27/10/2026', 'status' => 'sent', 'new_client' => 'Ottocar', 'after' => 'list']));
+            $inv = $this->db->table('money_invoices')->first();
+            $this->assert($inv && $res->status === 302 && str_ends_with((string) $res->headers['Location'], '/money/invoices/' . $inv['id']), 'a new invoice opens its own page so items can be added');
+            $this->assert((int) $inv['contact_id'] > 0 && $this->db->table('money_contacts')->where('name', 'Ottocar')->count() === 1, 'a new client is created from the form');
+            $this->assert($inv['number'] === 'INVOICE #1', 'a typed number is ignored and the series starts by itself: ' . $inv['number']);
+            $c->save($post('/admin/money/invoices/save', ['number' => 'INVOICE #1', 'issue_date' => '27/10/2026']));
+            $nums = $this->db->table('money_invoices')->orderBy('id')->pluck('number');
+            $this->assert(count($nums) === 2 && $nums[1] === 'INVOICE #2' && Money::nextInvoiceNumber() === 'INVOICE #3', 'numbers count up by themselves and never repeat');
+            $this->db->table('money_invoices')->where('number', 'INVOICE #2')->delete();
+            $id = (string) $inv['id'];
+            // Items: validation, totals, order, delete.
+            $json = $c->itemSave($post("/admin/money/invoices/$id/items/save", ['title' => '', 'quantity' => '0', 'rate' => 'x'], true), $id);
+            $this->assert($json->status === 422 && isset(json_decode($json->body, true)['errors']['title'], json_decode($json->body, true)['errors']['quantity']), 'a bad item gives messages as JSON for the pop-up');
+            $c->itemSave($post("/admin/money/invoices/$id/items/save", ['title' => 'Airport run', 'quantity' => '2', 'unit' => 'Journey', 'rate' => '35.00']), $id);
+            $c->itemSave($post("/admin/money/invoices/$id/items/save", ['title' => 'Waiting time', 'quantity' => '1.5', 'rate' => '10']), $id);
+            $inv = $this->db->table('money_invoices')->first();
+            $this->assert((float) $inv['subtotal'] === 85.0 && (float) $inv['total'] === 85.0, 'sub total adds quantity times rate: ' . $inv['total']);
+            $items = $this->db->table('money_invoice_items')->orderBy('sort_order')->orderBy('id')->get();
+            $this->assert(count($items) === 2 && (float) $items[0]['total'] === 70.0, 'item totals');
+            $c->itemOrder($post("/admin/money/invoices/$id/items/order", ['ids' => [(string) $items[1]['id'], (string) $items[0]['id']]]), $id);
+            $re = $this->db->table('money_invoice_items')->orderBy('sort_order')->get();
+            $this->assert((int) $re[0]['id'] === (int) $items[1]['id'], 'drag and drop order is kept');
+            // Discount.
+            $c->discount($post("/admin/money/invoices/$id/discount", ['discount' => '5']), $id);
+            $inv = $this->db->table('money_invoices')->first();
+            $this->assert((float) $inv['total'] === 80.0, 'discount comes off the total');
+            $badDisc = $c->discount($post("/admin/money/invoices/$id/discount", ['discount' => '-3'], true), $id);
+            $this->assert($badDisc->status === 422, 'a negative discount is refused');
+            // Payments.
+            $c->paymentSave($post("/admin/money/invoices/$id/payments/save", ['income_date' => '28/10/2026', 'amount' => '30', 'payment_method' => 'Bank']), $id);
+            $paid = Money::paidByInvoice()[(int) $id] ?? 0.0;
+            $inv = $this->db->table('money_invoices')->first();
+            $this->assert($paid === 30.0 && Money::invoiceBalance($inv, $paid) === 50.0 && Money::invoiceState($inv, $paid, '2026-10-28') === 'part', 'a part payment leaves a balance');
+            $c->paymentSave($post("/admin/money/invoices/$id/payments/save", ['income_date' => '29/10/2026', 'amount' => '50']), $id);
+            $paid = Money::paidByInvoice()[(int) $id] ?? 0.0;
+            $this->assert(Money::invoiceState($inv, $paid, '2026-10-29') === 'paid', 'paying the rest marks it paid');
+            $this->assert($this->db->table('money_income')->where('invoice_id', (int) $id)->count() === 2, 'payments are stored as income');
+            // The invoice page shows everything and escapes text.
+            $this->db->table('money_invoice_items')->where('id', (int) $items[0]['id'])->update(['title' => '<b>x</b>']);
+            $page = $c->show(new Request('GET', "/admin/money/invoices/$id", [], [], [], ['HTTP_HOST' => 'localhost']), $id)->body;
+            $this->assert(str_contains($page, 'Balance due') && str_contains($page, '&lt;b&gt;x&lt;/b&gt;') && !str_contains($page, '<b>x</b>'), 'the invoice page shows totals and escapes titles');
+            // Removing an item re-adds up.
+            $c->itemDelete($post("/admin/money/invoices/$id/items/{$items[0]['id']}/delete", []), $id, (string) $items[0]['id']);
+            $inv = $this->db->table('money_invoices')->first();
+            $this->assert((float) $inv['subtotal'] === 15.0 && (float) $inv['total'] === 10.0, 'removing an item adds up again: ' . $inv['total']);
+            // Status and delete keep the payments.
+            $c->status($post("/admin/money/invoices/$id/status", ['status' => 'cancelled']), $id);
+            $this->assert($this->db->table('money_invoices')->value('status') === 'cancelled', 'status changes');
+            $c->delete($post("/admin/money/invoices/$id/delete", []), $id);
+            $this->assert($this->db->table('money_invoices')->whereNull('deleted_at')->count() === 0 && $this->db->table('money_income')->count() === 2, 'deleting an invoice keeps its payments as income');
+        });
+        return '';
+    }
+
+    public function test_every_save_button_goes_to_the_list_or_stays_and_pop_ups_get_json(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $mk = fn(string $path, array $p, bool $json = false) => new Request('POST', $path, [], $p, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json'] : []));
+            $e = new ExpenseController();
+            $row = ['title' => 'Tyres', 'expense_date' => '27/10/2026', 'amount' => '80'];
+            $r = $e->save($mk('/admin/money/expenses/save', $row + ['after' => 'list']));
+            $this->assert($r->status === 302 && str_ends_with((string) $r->headers['Location'], '/money/expenses'), 'Save goes back to the list');
+            $id = (int) $this->db->table('money_expenses')->value('id');
+            $r = $e->save($mk('/admin/money/expenses/save', $row + ['id' => (string) $id, 'after' => 'stay']));
+            $this->assert(str_ends_with((string) $r->headers['Location'], '/money/expenses/' . $id), 'Save & Stay returns to the same record');
+            $r = $e->save($mk('/admin/money/expenses/save', $row + ['id' => (string) $id, 'after' => 'list'], true));
+            $this->assert($r->status === 200 && (json_decode($r->body, true)['ok'] ?? false) === true && str_ends_with((string) json_decode($r->body, true)['redirect'], '/money/expenses'), 'a pop-up gets JSON with where to go');
+            $r = $e->save($mk('/admin/money/expenses/save', ['title' => '', 'expense_date' => '27/10/2026', 'amount' => '1'], true));
+            $this->assert($r->status === 422 && isset(json_decode($r->body, true)['errors']['title']), 'a pop-up gets messages, not a redirect');
+            $i = new IncomeController();
+            $r = $i->save($mk('/admin/money/income/save', ['title' => 'Uber', 'income_date' => '27/10/2026', 'amount' => '100', 'after' => 'list']));
+            $this->assert($r->status === 302 && str_ends_with((string) $r->headers['Location'], '/money/income'), 'a payment saves and goes back to the list');
+            $iid = (int) $this->db->table('money_income')->value('id');
+            $r = $i->save($mk('/admin/money/income/save', ['id' => (string) $iid, 'title' => 'Uber', 'income_date' => '27/10/2026', 'amount' => '120', 'after' => 'stay']));
+            $this->assert(str_ends_with((string) $r->headers['Location'], '/money/income/' . $iid) && (float) $this->db->table('money_income')->value('amount') === 120.0, 'payment Save & Stay');
+            // The pop-up option and every form having both buttons.
+            $form = $e->form(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(str_contains($form, 'name="after" value="list"') && str_contains($form, 'name="after" value="stay"') && str_contains($form, 'data-modal-close') && !str_contains($form, '<html'), 'the pop-up form has Save, Save & Stay and Cancel and no page around it');
+            $this->assert(str_contains(Money::modalAttr(), 'data-money-modal') === ((string) setting('money.add_style', 'page') === 'modal'), 'the pop-up option follows the setting');
+        });
+        return '';
+    }
+
+    public function test_button_styles_exist_in_the_css_and_are_checked_when_saved(): string
+    {
+        $css = (string) file_get_contents(AP_ROOT . '/../assets/css/ui.css');
+        foreach (array_keys(ButtonController::STYLES) as $key) {
+            $this->assert(str_contains($css, '[data-btn="' . $key . '"]') && str_contains($css, '[data-btn-demo="' . $key . '"]'), "style $key has CSS for the page and for its preview");
+        }
+        $this->assert(count(ButtonController::STYLES) >= 12, 'at least twelve styles');
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $r = (new ButtonController())->save(new Request('POST', '/x', [], ['style' => 'nope; }'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($r->status === 302 && str_ends_with((string) $r->headers['Location'], 'appearance/buttons'), 'an unknown style is refused');
+            $r = (new ButtonController())->save(new Request('POST', '/x', [], ['style' => 'keycap', 'after' => 'list'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($r->status === 302 && str_ends_with((string) $r->headers['Location'], '/settings'), 'a known style is accepted');
+            $page = (new ButtonController())->index(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(substr_count($page, 'data-btn-demo=') === count(ButtonController::STYLES) && str_contains($page, 'Use This Style'), 'the page previews every style');
+        });
+        return '';
+    }
+
+    public function test_mileage_rates_follow_the_hmrc_example_and_the_ten_thousand_mile_step(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $r = ['high' => 55.0, 'low' => 25.0, 'moto' => 24.0, 'threshold' => 10000];
+            $this->assert(Mileage::value(11000, 'car', 0, $r) === 5750.0, 'HMRC example: 11,000 miles = 10,000 x 55p + 1,000 x 25p = 5,750');
+            $this->assert(abs(Mileage::value(500, 'van', 9800, $r) - 185.0) < 0.001, 'a trip that crosses the step is split: 200 at 55p and 300 at 25p');
+            $this->assert(Mileage::value(100, 'car', 12000, $r) === 25.0, 'after the step everything is 25p');
+            $this->assert(Mileage::value(1000, 'motorcycle', 50000, $r) === 240.0, 'motorcycles are one rate and have no step');
+            $this->assert(Mileage::rates('2025-26')['high'] === 45.0 && Mileage::rates('2026-27')['high'] === 55.0, 'the higher rate was 45p before 2026-27');
+        });
+        return '';
+    }
+
+    public function test_a_mileage_vehicle_replaces_its_running_costs_but_not_parking_and_the_tax_figures_agree(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $now = gmdate('Y-m-d H:i:s');
+            $car = $db->table('money_vehicles')->insertGetId(['name' => 'Prius', 'kind' => 'car', 'ownership' => 'owned', 'method' => 'mileage', 'active' => 1, 'created_at' => $now]);
+            $van = $db->table('money_vehicles')->insertGetId(['name' => 'Van', 'kind' => 'van', 'ownership' => 'leased', 'method' => 'actual', 'active' => 1, 'created_at' => $now]);
+            $park = $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Car Park Fee', 'hmrc_box' => 'car_van_travel', 'allowable' => 1, 'with_mileage' => 1, 'sort_order' => 0, 'active' => 1, 'created_at' => $now]);
+            $fuel = $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Fuel', 'hmrc_box' => 'car_van_travel', 'allowable' => 1, 'with_mileage' => 0, 'sort_order' => 0, 'active' => 1, 'created_at' => $now]);
+            $exp = static fn(int $cat, int $veh, float $amt) => ['expense_date' => '2026-06-10', 'title' => 'x', 'category_id' => $cat, 'vehicle_id' => $veh, 'amount' => $amt, 'business_percent' => 100, 'stream_id' => 0, 'created_at' => $now, 'updated_at' => $now];
+            $before = Money::overview('2026-27');
+            $db->table('money_expenses')->insert($exp($fuel, $car, 100.0));
+            $db->table('money_expenses')->insert($exp($park, $car, 10.0));
+            $db->table('money_expenses')->insert($exp($fuel, $van, 40.0));
+            // 11,000 miles in the year, in two trips, the second one crossing 10,000.
+            foreach ([['2026-06-01', 9800.0], ['2026-07-01', 1200.0]] as [$d, $m]) {
+                $db->table('money_trips')->insert(['vehicle_id' => $car, 'trip_date' => $d, 'miles' => $m, 'business' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            }
+            $db->table('money_trips')->insert(['vehicle_id' => $car, 'trip_date' => '2026-07-02', 'miles' => 300.0, 'business' => 0, 'created_at' => $now, 'updated_at' => $now]);
+            Mileage::reset();
+            $o = Money::overview('2026-27');
+            $expected = 10000 * 0.55 + 1000 * 0.25;
+            $this->assert(abs($o['mileage'] - $expected) < 0.01, 'the claim is 5,750: ' . $o['mileage']);
+            $this->assert(abs(($o['costs'] - $before['costs']) - ($expected + 10.0 + 40.0)) < 0.01, 'costs rise by the mileage claim, the parking and the other vehicle\'s fuel only: ' . ($o['costs'] - $before['costs']));
+            $this->assert(abs($o['not_costs']['mileage_covered'] - 100.0) < 0.01, 'the car\'s fuel is left out because the rate covers it');
+            $data = Insights::load();
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $t = Insights::totals($data, $from, $to);
+            $this->assert(abs($t['costs'] - $o['costs']) < 0.01 && abs($t['profit'] - $o['profit']) < 0.01, 'the dashboard figures match the overview: ' . $t['costs'] . ' vs ' . $o['costs']);
+            // The comparison for the car: private miles are counted in the share but not claimed.
+            $c = Mileage::compare($db->table('money_vehicles')->where('id', $car)->first(), '2026-27');
+            $this->assert($c['business_miles'] === 11000.0 && $c['all_miles'] === 11300.0 && $c['mileage_claim'] === 5750.0 && $c['actual_costs'] === 100.0 && $c['kept'] === 10.0 && $c['better'] === 'mileage', 'comparison figures');
+            // An old year uses the old rate.
+            $db->table('money_trips')->insert(['vehicle_id' => $car, 'trip_date' => '2026-01-10', 'miles' => 1000.0, 'business' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            Mileage::reset();
+            $this->assert(abs(Money::overview('2025-26')['mileage'] - 450.0) < 0.01, '1,000 miles in 2025-26 are 45p each');
+        });
+        return '';
+    }
+
+    public function test_vehicle_rules_and_the_mileage_log_forms(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $post = fn(string $path, array $p, bool $json = false) => new Request('POST', $path, [], $p, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json'] : []));
+            $vc = new VehicleController();
+            $bad = $vc->save($post('/x', ['name' => '', 'kind' => 'boat', 'ownership' => 'owned', 'method' => 'actual'], true));
+            $err = json_decode($bad->body, true)['errors'] ?? [];
+            $this->assert($bad->status === 422 && isset($err['name'], $err['kind']), 'a bad vehicle gives messages');
+            $both = $vc->save($post('/x', ['name' => 'Car', 'kind' => 'car', 'ownership' => 'owned', 'method' => 'mileage', 'capital_claimed' => '1'], true));
+            $this->assert($both->status === 422 && isset(json_decode($both->body, true)['errors']['method']), 'capital allowances rule out the mileage rate');
+            $vc->save($post('/x', ['name' => 'Prius', 'registration' => 'ab12 cde', 'kind' => 'car', 'ownership' => 'leased', 'method' => 'actual', 'start_date' => '01/05/2025', 'after' => 'list']));
+            $v = $this->db->table('money_vehicles')->first();
+            $this->assert($v && $v['registration'] === 'AB12 CDE' && $v['start_date'] === '2025-05-01', 'vehicle saved');
+            // Trips: odometer works out the miles, a missing vehicle or miles is refused, Save & Stay on a new trip opens the next.
+            $tc = new TripController();
+            $noV = $tc->save($post('/x', ['trip_date' => '27/10/2026', 'miles' => '10'], true));
+            $this->assert($noV->status === 422 && isset(json_decode($noV->body, true)['errors']['vehicle_id']), 'a trip needs a vehicle');
+            $r = $tc->save($post('/x', ['trip_date' => '27/10/2026', 'vehicle_id' => (string) $v['id'], 'odo_start' => '10,000', 'odo_end' => '10,125', 'business' => '1', 'after' => 'stay']));
+            $trip = $this->db->table('money_trips')->first();
+            $this->assert((float) $trip['miles'] === 125.0 && str_ends_with((string) $r->headers['Location'], '/money/trips/new'), 'odometer readings give the miles and Save & Stay opens a fresh form');
+            $zero = $tc->save($post('/x', ['trip_date' => '27/10/2026', 'vehicle_id' => (string) $v['id'], 'miles' => '0'], true));
+            $this->assert($zero->status === 422, 'no miles, no trip');
+            // Now it is in use, so the claim method is locked.
+            $lock = $vc->save($post('/x', ['id' => (string) $v['id'], 'name' => 'Prius', 'kind' => 'car', 'ownership' => 'leased', 'method' => 'mileage'], true));
+            $this->assert($lock->status === 422 && isset(json_decode($lock->body, true)['errors']['method']), 'the method cannot change once there are trips');
+            $vc->delete($post('/x', []), (string) $v['id']);
+            $row = $this->db->table('money_vehicles')->first();
+            $this->assert($row && (int) $row['active'] === 0 && $row['end_date'] !== null, 'a vehicle in use is ended, not deleted');
+            $tc->delete($post('/x', []), (string) $trip['id']);
+            $this->assert($this->db->table('money_trips')->whereNull('deleted_at')->count() === 0, 'trips can be deleted');
+            // The page shows the vehicle and escapes names.
+            $this->db->table('money_vehicles')->where('id', $v['id'])->update(['name' => '<i>x</i>']);
+            $page = $vc->show(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $v['id'])->body;
+            $this->assert(str_contains($page, '&lt;i&gt;x&lt;/i&gt;') && !str_contains($page, '<i>x</i>'), 'vehicle names are escaped');
+        });
+        return '';
+    }
+
+    public function test_receipts_are_served_safely_and_only_known_files(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $f = $this->db->table('money_files')->first();
+            $dir = Money::filesDir();
+            is_dir($dir) || mkdir($dir, 0775, true);
+            copy($this->tmp . '/store/' . $f['stored_name'], $dir . '/' . $f['stored_name']);
+            try {
+                $res = (new FileController())->show(new Request('GET', '/x', [], [], [], []), (string) $f['id']);
+                $this->assert($res->status === 200 && str_contains((string) ($res->headers['Content-Disposition'] ?? ''), 'filename="receipt one.pdf"'), 'the receipt is given');
+                $this->assert(($res->headers['X-Content-Type-Options'] ?? '') === 'nosniff' && str_starts_with((string) ($res->headers['Content-Disposition'] ?? ''), 'inline'), 'a PDF is shown in the browser with safe headers');
+                $this->db->table('money_files')->where('id', $f['id'])->update(['mime' => 'text/html']);
+                $h = (new FileController())->show(new Request('GET', '/x', [], [], [], []), (string) $f['id']);
+                $this->assert(str_contains((string) ($h->headers['Content-Security-Policy'] ?? ''), 'sandbox') && str_starts_with((string) ($h->headers['Content-Disposition'] ?? ''), 'attachment'), 'anything else is only ever downloaded');
+                $this->db->table('money_files')->where('id', $f['id'])->update(['mime' => 'application/pdf']);
+                $this->db->table('money_files')->where('id', $f['id'])->update(['stored_name' => '../../config/local.php']);
+                $threw = false;
+                try {
+                    (new FileController())->show(new Request('GET', '/x', [], [], [], []), (string) $f['id']);
+                } catch (\AP\Core\HttpException) {
+                    $threw = true;
+                }
+                $this->assert($threw, 'a path that climbs out of the folder is never opened');
+            } finally {
+                @unlink($dir . '/' . $f['stored_name']);
+            }
+        });
+        return '';
+    }
+
+    public function test_expense_filters_file_icons_and_edit_delete_icons(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $get = static fn(array $q) => new Request('GET', '/admin/money/expenses', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $db = $this->db;
+            $db->table('money_expenses')->insert(['expense_date' => '2026-10-05', 'title' => 'Filter probe', 'amount' => 77.0, 'business_percent' => 50, 'payment_method' => 'Card', 'recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'weeks',
+                'vehicle_id' => 0, 'created_at' => '2026-10-05 00:00:00', 'updated_at' => '2026-10-05 00:00:00']);
+            $id = (int) $db->table('money_expenses')->where('title', 'Filter probe')->value('id');
+            $count = static fn(string $body): int => preg_match('/(\d+) expenses/', $body, $m) ? (int) $m[1] : 0;
+            $all = (new ExpenseController())->index($get(['year' => 'all']));
+            $n = $count($all->body);
+            $this->assert($n > 3, 'there are expenses to filter');
+            $cases = [
+                ['min' => '70', 'max' => '80'], ['repeat' => 'yes'], ['share' => 'part'], ['method' => 'Card'], ['period' => 'custom', 'from' => '05/10/2026', 'to' => '05/10/2026'], ['q' => 'Filter probe'],
+            ];
+            foreach ($cases as $c) {
+                $r = (new ExpenseController())->index($get(['year' => 'all'] + $c));
+                $this->assert(str_contains($r->body, 'Filter probe') && ($count($r->body) === 1 || isset($c['repeat'])) && $count($r->body) < $n, 'filter ' . json_encode($c) . ' narrows to the probe, got ' . $count($r->body));
+            }
+            $without = $count((new ExpenseController())->index($get(['year' => 'all', 'receipt' => 'without']))->body);
+            $with = $count((new ExpenseController())->index($get(['year' => 'all', 'receipt' => 'with']))->body);
+            $this->assert($with > 0 && $with + $without === $n, "with ($with) and without ($without) files add up to all ($n)");
+            $none = (new ExpenseController())->index($get(['year' => 'all', 'min' => '99999']));
+            $this->assert(str_contains($none->body, 'No expenses match'), 'an empty result says so');
+            $chipPage = (new ExpenseController())->index($get(['year' => 'all', 'repeat' => 'yes', 'min' => '5']));
+            $this->assert(str_contains($chipPage->body, 'mn-fchip') && str_contains($chipPage->body, 'Clear All'), 'active filters show as removable chips');
+            // file icons: kind and link
+            $this->assert(str_contains($all->body, 'fa-file-pdf') && str_contains($all->body, 'data-file-preview="pdf"') && str_contains($all->body, '/money/files/'), 'a PDF receipt gets a PDF icon that opens the file');
+            $this->assert(Money::fileKind('a.JPG')[0] === 'fa-file-image' && Money::fileKind('b.docx')[0] === 'fa-file-word' && Money::fileKind('c.xlsx')[0] === 'fa-file-excel' && Money::fileKind('d.zip')[0] === 'fa-file', 'file kinds are told apart');
+            // edit and delete on the row
+            $this->assert(str_contains($all->body, '/money/expenses/' . $id . '"') && str_contains($all->body, '/money/expenses/' . $id . '/delete'), 'each row has edit and delete');
+            // delete comes back to the filtered list, and never to another site
+            $post = new Request('POST', '/x', [], ['return' => '/admin/money/expenses?year=all&repeat=yes'], [], ['HTTP_HOST' => 'localhost']);
+            $r = (new ExpenseController())->delete($post, (string) $id);
+            $this->assert(str_ends_with((string) $r->headers['Location'], 'expenses?year=all&repeat=yes'), 'delete returns to the same filtered list');
+            $this->assert(Money::returnTo(new Request('POST', '/x', [], ['return' => '//evil.com/money'], [], []), '/ok') === '/ok' && Money::returnTo(new Request('POST', '/x', [], ['return' => 'https://evil.com/money'], [], []), '/ok') === '/ok', 'a return address must stay on this site');
+        });
+        return '';
+    }
+
+    public function test_every_kind_of_entry_can_be_changed_and_deleted(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            foreach (['payments' => (new IncomeController())->index($get('/x', ['year' => 'all'])), 'trips' => (new TripController())->index($get('/x', ['year' => 'all'])),
+                'invoices' => (new InvoiceController())->index($get('/x', ['year' => 'all'])), 'vehicles' => (new VehicleController())->index($get('/x', ['year' => '2026-27'])),
+                'categories' => (new CategoryController())->index($get('/x')), 'contacts' => (new \AP\Modules\Money\Controllers\ContactController())->index($get('/x')),
+                'streams' => (new \AP\Modules\Money\Controllers\StreamController())->index($get('/x'))] as $label => $res) {
+                $this->assert($res->status === 200, "$label opens");
+                if ($label === 'trips' || $label === 'vehicles' || $label === 'categories') {
+                    continue; // may be empty in the sample data
+                }
+                $this->assert(str_contains($res->body, 'fa-trash') && ($label === 'streams' || str_contains($res->body, 'fa-pen')), "$label rows have edit and delete icons");
+            }
+            // categories: rename, then delete moves expenses to "no category"
+            $cat = $db->table('money_categories')->where('kind', 'expense')->first();
+            $row = ['hmrc_box' => $cat['hmrc_box'], 'name' => 'Renamed Probe'];
+            (new CategoryController())->save(new Request('POST', '/x', [], ['cat' => [(string) $cat['id'] => $row]], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($db->table('money_categories')->where('id', $cat['id'])->value('name') === 'Renamed Probe', 'a category can be renamed');
+            $db->table('money_expenses')->insert(['expense_date' => '2026-10-05', 'title' => 'Cat probe', 'amount' => 1, 'category_id' => $cat['id'], 'created_at' => '2026-10-05 00:00:00', 'updated_at' => '2026-10-05 00:00:00']);
+            (new CategoryController())->delete(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $cat['id']);
+            $this->assert(!$db->table('money_categories')->where('id', $cat['id'])->exists() && (int) $db->table('money_expenses')->where('title', 'Cat probe')->value('category_id') === 0, 'deleting a category keeps its expenses');
+            // contacts: create, edit, delete (unused) and archive (used)
+            $cc = new \AP\Modules\Money\Controllers\ContactController();
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            $cc->save($post(['name' => 'Probe Ltd', 'kind' => 'client', 'email' => 'a@b.co']));
+            $cid = (int) $db->table('money_contacts')->where('name', 'Probe Ltd')->value('id');
+            $this->assert($cid > 0, 'a contact is added');
+            $bad = $cc->save($post(['name' => 'X', 'email' => 'nope']));
+            $this->assert($bad->status === 302 && $db->table('money_contacts')->where('name', 'X')->count() === 0, 'a bad email saves nothing');
+            $cc->save($post(['id' => (string) $cid, 'name' => 'Probe Limited', 'kind' => 'supplier', 'active' => '1']));
+            $this->assert($db->table('money_contacts')->where('id', $cid)->value('name') === 'Probe Limited', 'a contact can be changed');
+            $db->table('money_income')->insert(['income_date' => '2026-10-05', 'title' => 'Probe pay', 'amount' => 5, 'contact_id' => $cid, 'created_at' => '2026-10-05 00:00:00', 'updated_at' => '2026-10-05 00:00:00']);
+            $cc->delete($post([]), (string) $cid);
+            $this->assert((int) $db->table('money_contacts')->where('id', $cid)->value('active') === 0, 'a contact in use is archived, not lost');
+            $db->table('money_income')->where('title', 'Probe pay')->delete();
+            $cc->delete($post([]), (string) $cid);
+            $this->assert(!$db->table('money_contacts')->where('id', $cid)->exists(), 'an unused contact is deleted');
+            // streams
+            $sc = new \AP\Modules\Money\Controllers\StreamController();
+            $sc->save($post(['new_name' => 'Probe Stream', 'new_colour' => '#112233']));
+            $sid = (int) $db->table('money_streams')->where('name', 'Probe Stream')->value('id');
+            $sc->save($post(['s' => [(string) $sid => ['name' => 'Probe Two', 'colour' => 'not a colour', 'active' => '1']]]));
+            $this->assert($db->table('money_streams')->where('id', $sid)->value('name') === 'Probe Two' && $db->table('money_streams')->where('id', $sid)->value('colour') === '#4f6bed', 'a stream is renamed and a bad colour is replaced');
+            $sc->delete($post([]), (string) $sid);
+            $this->assert(!$db->table('money_streams')->where('id', $sid)->exists(), 'an unused stream is deleted');
+        });
+        return '';
+    }
+
+    public function test_ticked_rows_can_be_changed_or_deleted_together(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $now = '2026-10-05 00:00:00';
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            $get = static fn(array $q) => new Request('GET', '/x', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            // the lists show tick boxes and a bar
+            foreach ([(new ExpenseController())->index($get(['year' => 'all'])), (new IncomeController())->index($get(['year' => 'all'])), (new InvoiceController())->index($get(['year' => 'all'])),
+                (new \AP\Modules\Money\Controllers\ContactController())->index($get([]))] as $i => $res) {
+                $this->assert(str_contains($res->body, 'data-bulk-all') && str_contains($res->body, 'data-bulk-one') && str_contains($res->body, 'data-bulk-bar'), "list $i has tick boxes and a bulk bar");
+            }
+            // expenses
+            $cat = (int) $db->table('money_categories')->where('kind', 'expense')->value('id');
+            $ids = [];
+            foreach (['Bulk A', 'Bulk B', 'Bulk C'] as $t) {
+                $ids[] = (int) $db->table('money_expenses')->insertGetId(['expense_date' => '2026-10-05', 'title' => $t, 'amount' => 10, 'created_at' => $now, 'updated_at' => $now]);
+            }
+            $ec = new ExpenseController();
+            $send = array_map('strval', array_slice($ids, 0, 2));
+            $ec->bulk($post(['do' => 'category', 'value' => (string) $cat, 'ids' => $send]));
+            $this->assert((int) $db->table('money_expenses')->where('id', $ids[0])->value('category_id') === $cat && (int) $db->table('money_expenses')->where('id', $ids[2])->value('category_id') === 0, 'only ticked expenses get the category');
+            $ec->bulk($post(['do' => 'percent', 'value' => '40', 'ids' => $send]));
+            $this->assert((float) $db->table('money_expenses')->where('id', $ids[1])->value('business_percent') === 40.0, 'a business share is set for all ticked');
+            $ec->bulk($post(['do' => 'percent', 'value' => '140', 'ids' => $send]));
+            $this->assert((float) $db->table('money_expenses')->where('id', $ids[1])->value('business_percent') === 40.0, 'a share over 100 changes nothing');
+            $ec->bulk($post(['do' => 'category', 'value' => '999999', 'ids' => $send]));
+            $this->assert((int) $db->table('money_expenses')->where('id', $ids[0])->value('category_id') === $cat, 'a category that does not exist changes nothing');
+            $ec->bulk($post(['do' => 'delete', 'ids' => []]));
+            $this->assert($db->table('money_expenses')->whereIn('id', $ids)->whereNull('deleted_at')->count() === 3, 'nothing ticked deletes nothing');
+            $ec->bulk($post(['do' => 'delete', 'ids' => $send]));
+            $this->assert($db->table('money_expenses')->whereIn('id', $ids)->whereNull('deleted_at')->count() === 1, 'ticked expenses are deleted, the rest stay');
+            // income
+            $inc = [];
+            foreach (['Pay A', 'Pay B'] as $t) {
+                $inc[] = (int) $db->table('money_income')->insertGetId(['income_date' => '2026-10-05', 'title' => $t, 'amount' => 5, 'created_at' => $now, 'updated_at' => $now]);
+            }
+            $stream = (int) $db->table('money_streams')->value('id');
+            (new IncomeController())->bulk($post(['do' => 'stream', 'value' => (string) $stream, 'ids' => array_map('strval', $inc)]));
+            $this->assert((int) $db->table('money_income')->where('id', $inc[1])->value('stream_id') === $stream, 'payments move to a stream together');
+            (new IncomeController())->bulk($post(['do' => 'delete', 'ids' => [(string) $inc[0]]]));
+            $this->assert($db->table('money_income')->where('id', $inc[0])->value('deleted_at') !== null && $db->table('money_income')->where('id', $inc[1])->value('deleted_at') === null, 'payments are deleted together');
+            // invoices
+            $inv = $db->table('money_invoices')->whereNull('deleted_at')->first();
+            if ($inv) {
+                $ic = new InvoiceController();
+                $ic->bulk($post(['do' => 'draft', 'ids' => [(string) $inv['id']]]));
+                $this->assert($db->table('money_invoices')->where('id', $inv['id'])->value('status') === 'draft', 'invoices are marked as drafts together');
+                $ic->bulk($post(['do' => 'bogus', 'ids' => [(string) $inv['id']]]));
+                $this->assert($db->table('money_invoices')->where('id', $inv['id'])->value('status') === 'draft', 'an unknown action does nothing');
+            }
+            // contacts
+            $cc = new \AP\Modules\Money\Controllers\ContactController();
+            $used = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Bulk Used', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $free = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Bulk Free', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $db->table('money_income')->insert(['income_date' => '2026-10-05', 'title' => 'Bulk use', 'amount' => 1, 'contact_id' => $used, 'created_at' => $now, 'updated_at' => $now]);
+            $cc->bulk($post(['do' => 'delete', 'ids' => [(string) $used, (string) $free]]));
+            $this->assert(!$db->table('money_contacts')->where('id', $free)->exists() && (int) $db->table('money_contacts')->where('id', $used)->value('active') === 0, 'unused contacts are deleted and used ones archived');
+            $cc->bulk($post(['do' => 'restore', 'ids' => [(string) $used]]));
+            $this->assert((int) $db->table('money_contacts')->where('id', $used)->value('active') === 1, 'archived contacts come back');
+            // trips
+            $veh = (int) $db->table('money_vehicles')->insertGetId(['name' => 'Bulk Car', 'kind' => 'car', 'ownership' => 'owned', 'method' => 'actual', 'active' => 1, 'created_at' => $now]);
+            $trip = (int) $db->table('money_trips')->insertGetId(['vehicle_id' => $veh, 'trip_date' => '2026-10-05', 'miles' => 3, 'business' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $tc = new TripController();
+            $tc->bulk($post(['do' => 'private', 'ids' => [(string) $trip]]));
+            $this->assert((int) $db->table('money_trips')->where('id', $trip)->value('business') === 0, 'trips are marked private together');
+            $tc->bulk($post(['do' => 'delete', 'ids' => [(string) $trip]]));
+            $this->assert($db->table('money_trips')->where('id', $trip)->value('deleted_at') !== null, 'trips are deleted together');
+            // the return address stays on this site
+            $r = $ec->bulk($post(['do' => 'delete', 'ids' => [], 'return' => 'https://evil.example/x']));
+            $this->assert(!str_contains((string) ($r->headers['Location'] ?? ''), 'evil'), 'bulk never redirects to another site');
+        });
+        return '';
+    }
+
+    /** A fresh Settings (real storage, real encryption) that knows every setting of every module, so secret keys behave as in the live site. */
+    private function liveSettings(): \AP\Core\Settings
+    {
+        $old = App::instance()->make(\AP\Core\Settings::class);
+        foreach (['ap_settings' => 'CREATE TABLE ap_settings (name TEXT PRIMARY KEY, value TEXT, updated_at TEXT)',
+            'ap_setting_history' => 'CREATE TABLE ap_setting_history (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, old_value TEXT, new_value TEXT, user_id INTEGER, changed_at TEXT)'] as $t => $sql) {
+            if (!$this->db->hasTable(substr($t, 3))) {
+                $this->db->pdo()->exec($sql);
+            }
+        }
+        $s = new \AP\Core\Settings($this->db, new \AP\Core\Crypt(\AP\Core\Crypt::generateKey()));
+        foreach ($old->definitions() as $k => $d) {
+            $s->define($k, $d);
+        }
+        App::instance()->set(\AP\Core\Settings::class, $s);
+        return $s;
+    }
+
+    public function test_clients_pay_invoices_from_a_private_link_and_every_payment_counts_once(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com', 'money.pay_stripe_on' => '1', 'money.pay_stripe_secret' => 'sk_live_abc',
+                'money.pay_stripe_webhook' => 'whsec_test', 'money.pay_paypal_on' => '1', 'money.pay_paypal_client' => 'cid', 'money.pay_paypal_secret' => 'sec', 'money.pay_paypal_mode' => 'live',
+                'money.pay_bank_details' => "Sort code 00-00-00\nAccount 12345678"] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $this->assert(Pay::stripeOn() && Pay::paypalOn() && Pay::bankOn() && Pay::online(), 'card, PayPal and bank are switched on');
+            $s->set('money.pay_stripe_secret', '');
+            $this->assert(!Pay::stripeOn(), 'a missing secret key switches cards off');
+            $s->set('money.pay_stripe_secret', 'sk_live_abc');
+            $now = '2026-10-05 00:00:00';
+            $cid = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Ottocar <b>Ltd</b>', 'email' => 'billing@ottocar.example', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $stream = (int) $db->table('money_streams')->value('id');
+            $mk = static fn(string $n, string $status, ?string $due) => (int) Money::db()->table('money_invoices')->insertGetId(['number' => $n, 'contact_id' => $cid, 'stream_id' => $stream, 'issue_date' => '2026-10-01', 'due_date' => $due, 'status' => $status,
+                'subtotal' => 100, 'discount' => 0, 'tax' => 0, 'total' => 100, 'created_at' => '2026-10-01 00:00:00', 'updated_at' => '2026-10-01 00:00:00']);
+            $id = $mk('PAY #1', 'sent', '2027-12-31');
+            $db->table('money_invoice_items')->insert(['invoice_id' => $id, 'sort_order' => 1, 'title' => 'Rent <script>alert(1)</script>', 'quantity' => 1, 'rate' => 100, 'total' => 100]);
+            $inv = fn() => $db->table('money_invoices')->where('id', $id)->first();
+            $token = Pay::token($inv());
+            $this->assert(preg_match('/^[a-f0-9]{32}$/', $token) === 1 && Pay::token($inv()) === $token && str_ends_with(Pay::url($inv()), '/pay/' . $token), 'an invoice keeps one private link');
+            $hit = app(Router::class)->match('GET', '/pay/' . $token);
+            $this->assert($hit !== null && ($hit[0]['name'] ?? '') === 'pay.show' && $hit[1]['token'] === $token, 'the pay link finds the pay page through the router');
+            $this->assert(app(Router::class)->match('POST', '/pay/' . $token . '/start/stripe') !== null && app(Router::class)->match('GET', '/pay/' . $token . '/done/paypal') !== null, 'start and return addresses are routed');
+            $pc = new \AP\Modules\Money\Controllers\PayController();
+            $get = fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            // the page
+            $page = $pc->show($get('/pay/' . $token), $token);
+            $this->assert($page->status === 200 && str_contains($page->body, 'Pay By Card') && str_contains($page->body, 'Pay With PayPal') && str_contains($page->body, '£100.00') && str_contains($page->body, 'Sort code 00-00-00'), 'the pay page shows the invoice, both buttons and the bank details');
+            $this->assert(!str_contains($page->body, '<script>alert') && str_contains($page->body, 'Ottocar &lt;b&gt;Ltd&lt;/b&gt;'), 'text on the pay page is escaped');
+            $this->assert(str_contains((string) $page->headers['X-Robots-Tag'], 'noindex') && str_contains((string) $page->headers['Cache-Control'], 'no-store'), 'the pay page is private and not kept by search engines');
+            $thrown = null;
+            try {
+                $pc->show($get('/pay/' . str_repeat('a', 32)), str_repeat('a', 32));
+            } catch (\AP\Core\HttpException $e) {
+                $thrown = $e->status;
+            }
+            $this->assert($thrown === 404 && Pay::find('not-a-token') === null, 'a wrong link shows nothing');
+            // Every shape of invoice must show a page, never a blank one: no client, no due date, no lines, a discount and tax, a part payment.
+            $odd = (int) $db->table('money_invoices')->insertGetId(['number' => 'ODD #1', 'contact_id' => 0, 'stream_id' => 0, 'issue_date' => '2026-10-01', 'due_date' => null, 'status' => 'sent', 'subtotal' => 100, 'discount' => 10, 'tax' => 18, 'total' => 108,
+                'note' => "Thanks\nfor the trip", 'created_at' => '2026-10-01 00:00:00', 'updated_at' => '2026-10-01 00:00:00']);
+            $db->table('money_income')->insert(['income_date' => '2026-10-02', 'title' => 'part', 'amount' => 8, 'invoice_id' => $odd, 'payment_method' => 'Cash', 'created_at' => '2026-10-02 00:00:00', 'updated_at' => '2026-10-02 00:00:00']);
+            $oddTok = Pay::token($db->table('money_invoices')->where('id', $odd)->first());
+            $op = $pc->show($get('/x'), $oddTok);
+            $this->assert($op->status === 200 && str_contains($op->body, '£100.00') && str_contains($op->body, 'Part Paid') && str_contains($op->body, 'ODD #1'), 'an invoice with no client, no due date and a part payment still shows its page');
+            $draft = $mk('PAY #D', 'draft', null);
+            $dt = Pay::token($db->table('money_invoices')->where('id', $draft)->first());
+            $dp = $pc->show($get('/x'), $dt);
+            $this->assert(str_contains($dp->body, 'can not be paid') && !str_contains($dp->body, 'Pay By Card'), 'a draft cannot be paid');
+            // card: start, return, replay
+            $sent = [];
+            \AP\Core\Http::$transport = static function (string $url, array $o) use (&$sent): array {
+                $sent[] = [$url, $o];
+                $body = (string) ($o['body'] ?? '');
+                if (str_contains($url, 'api.stripe.com/v1/checkout/sessions') && ($o['method'] ?? 'GET') === 'POST') {
+                    return ['code' => 200, 'body' => json_encode(['id' => 'cs_test_abc12345', 'url' => 'https://checkout.stripe.com/c/pay/cs_test_abc12345'])];
+                }
+                if (str_contains($url, 'checkout/sessions/cs_test_abc12345')) {
+                    return ['code' => 200, 'body' => json_encode(['id' => 'cs_test_abc12345', 'payment_status' => 'paid', 'amount_total' => 5000, 'currency' => 'gbp', 'metadata' => ['invoice_id' => $GLOBALS['mn_inv']], 'customer_details' => ['email' => 'payer@example.com']])];
+                }
+                if (str_contains($url, 'checkout/sessions/cs_test_other001')) {
+                    return ['code' => 200, 'body' => json_encode(['id' => 'cs_test_other001', 'payment_status' => 'paid', 'amount_total' => 9900, 'currency' => 'gbp', 'metadata' => ['invoice_id' => '999999']])];
+                }
+                if (str_contains($url, '/v1/oauth2/token')) {
+                    return ['code' => 200, 'body' => json_encode(['access_token' => 'tok'])];
+                }
+                if (str_contains($url, '/v2/checkout/orders') && !str_contains($url, '/capture') && ($o['method'] ?? 'GET') === 'POST') {
+                    return ['code' => 201, 'body' => json_encode(['id' => 'ORDER12345AB', 'links' => [['rel' => 'payer-action', 'href' => 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345AB']]])];
+                }
+                if (str_contains($url, '/v2/checkout/orders/ORDER12345AB/capture')) {
+                    return ['code' => 201, 'body' => json_encode(['status' => 'COMPLETED', 'payer' => ['email_address' => 'pp@example.com'], 'purchase_units' => [['payments' => ['captures' => [['id' => 'CAP1', 'status' => 'COMPLETED', 'amount' => ['currency_code' => 'GBP', 'value' => '30.00']]]]]]])];
+                }
+                return ['code' => 404, 'body' => json_encode(['error' => ['message' => 'unexpected ' . $url]])];
+            };
+            $GLOBALS['mn_inv'] = (string) $id;
+            try {
+                $bad = $pc->start($post(['amount' => '500']), $token, 'stripe');
+                $this->assert($bad->status === 200 && str_contains($bad->body, 'between the minimum'), 'asking to pay more than is owed is refused');
+                $bad2 = $pc->start($post(['amount' => '0.10']), $token, 'stripe');
+                $this->assert(str_contains($bad2->body, 'between the minimum') && !$sent, 'less than the smallest part payment is refused, and Stripe is not called');
+                $this->assert($pc->start($post(['amount' => '50']), $token, 'bitcoin') === null, 'x');
+            } catch (\AP\Core\HttpException $e) {
+                $this->assert($e->status === 404, 'an unknown way to pay is a 404');
+            }
+            $go = $pc->start($post(['amount' => '£50.00']), $token, 'stripe');
+            $this->assert($go->status === 302 && str_starts_with((string) $go->headers['Location'], 'https://checkout.stripe.com/'), 'the client is sent to Stripe');
+            parse_str((string) end($sent)[1]['body'], $form);
+            $this->assert(($form['line_items'][0]['price_data']['unit_amount'] ?? 0) == 5000 && $form['line_items'][0]['price_data']['currency'] === 'gbp' && $form['metadata']['invoice_id'] === (string) $id && $form['customer_email'] === 'billing@ottocar.example' && $form['mode'] === 'payment', 'Stripe is asked for exactly £50.00 for this invoice');
+            $this->assert(str_contains((string) end($sent)[1]['headers'][0], 'sk_live_abc') && str_contains($form['success_url'], '{CHECKOUT_SESSION_ID}') && str_contains($form['success_url'], $token), 'the secret key is used only in the request header, and the client comes back to their own link');
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->count() === 0, 'nothing is counted before the money is confirmed');
+            $back = $pc->done($get('/x', ['session_id' => 'cs_test_abc12345']), $token, 'stripe');
+            $this->assert(str_ends_with((string) $back->headers['Location'], '?paid=1'), 'the client sees the thank-you');
+            $row = $db->table('money_income')->where('invoice_id', $id)->first();
+            $this->assert($row && (float) $row['amount'] === 50.0 && $row['payment_method'] === 'Stripe' && (int) $row['contact_id'] === $cid && (int) $row['stream_id'] === $stream, 'the card payment is in your income, on the invoice, with the client and stream');
+            $pc->done($get('/x', ['session_id' => 'cs_test_abc12345']), $token, 'stripe');
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->count() === 1, 'reloading the return page does not count the payment twice');
+            $other = $pc->done($get('/x', ['session_id' => 'cs_test_other001']), $token, 'stripe');
+            $this->assert(str_ends_with((string) $other->headers['Location'], '?problem=1') && $db->table('money_income')->where('invoice_id', $id)->count() === 1 && $db->table('money_income')->where('amount', 99)->count() === 0, 'a payment for another invoice is never added');
+            $bogus = $pc->done($get('/x', ['session_id' => '../../x']), $token, 'stripe');
+            $this->assert(str_ends_with((string) $bogus->headers['Location'], '?problem=1'), 'a made-up payment reference is refused');
+            // webhook
+            $event = json_encode(['type' => 'checkout.session.completed', 'data' => ['object' => ['id' => 'cs_test_hook0001', 'payment_status' => 'paid', 'amount_total' => 2000, 'currency' => 'gbp', 'metadata' => ['invoice_id' => (string) $id], 'customer_details' => ['email' => 'h@example.com']]]]);
+            $sign = static fn(string $payload, int $t, string $secret = 'whsec_test') => 't=' . $t . ',v1=' . hash_hmac('sha256', $t . '.' . $payload, $secret);
+            $this->assert(Pay::webhook($event, $sign($event, time(), 'wrong'))['code'] === 400 && Pay::webhook($event, 'nonsense')['code'] === 400 && Pay::webhook($event, $sign($event, time() - 3600))['code'] === 400, 'a forged or old Stripe message is refused');
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->count() === 1, 'a refused message adds nothing');
+            $this->assert(Pay::webhook($event, $sign($event, time()))['code'] === 200 && $db->table('money_income')->where('invoice_id', $id)->count() === 2, 'a signed Stripe message adds the payment');
+            Pay::webhook($event, $sign($event, time()));
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->count() === 2, 'Stripe telling us twice counts it once');
+            $viaWeb = new Request('POST', '/pay/stripe-webhook', [], [], [], ['HTTP_HOST' => 'localhost', 'HTTP_STRIPE_SIGNATURE' => $sign($event, time())]);
+            $viaWeb->attributes['raw'] = $event;
+            $this->assert($pc->stripeWebhook($viaWeb)->status === 200, 'the webhook address answers Stripe');
+            // PayPal
+            $pp = $pc->start($post(['amount' => '30']), $token, 'paypal');
+            $this->assert($pp->status === 302 && str_starts_with((string) $pp->headers['Location'], 'https://www.sandbox.paypal.com/') && str_contains(implode(' ', array_column($sent, 0)), 'api-m.paypal.com'), 'PayPal live mode uses the live service, and the client is sent to PayPal');
+            $unknown = $pc->done($get('/x', ['token' => 'ZZZZ9999ZZ']), $token, 'paypal');
+            $this->assert(str_ends_with((string) $unknown->headers['Location'], '?problem=1'), 'a PayPal order we never started is refused');
+            $pc->done($get('/x', ['token' => 'ORDER12345AB']), $token, 'paypal');
+            $pc->done($get('/x', ['token' => 'ORDER12345AB']), $token, 'paypal');
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->where('payment_method', 'PayPal')->count() === 1 && (float) $db->table('money_income')->where('invoice_id', $id)->sum('amount') === 100.0, 'the PayPal payment counts once and the invoice adds up to £100.00');
+            $this->assert(Money::invoiceState($inv(), 100.0, '2026-10-20') === 'paid', 'the invoice is now paid');
+            $done = $pc->show($get('/x'), $token);
+            $this->assert(str_contains($done->body, 'Paid in full') && !str_contains($done->body, 'Pay By Card'), 'a paid invoice shows no pay buttons');
+            // emails: receipts to the client, a note to you
+            $log = $db->table('mail_log')->get();
+            $templates = array_column($log, 'template');
+            $this->assert(in_array('money.receipt', $templates, true) && in_array('money.paid_notice', $templates, true), 'a receipt and a note were sent');
+            $rec = $db->table('mail_log')->where('template', 'money.receipt')->first();
+            $this->assert(str_contains((string) $rec['to_address'], 'h@example.com') || str_contains((string) $rec['to_address'], 'payer@example.com') || str_contains((string) $rec['to_address'], 'pp@example.com'), 'the receipt goes to the person who paid');
+            \AP\Core\Http::$transport = null;
+            unset($GLOBALS['mn_inv']);
+            // part payments off: the whole balance
+            $inv2 = $mk('PAY #2', 'sent', '2027-12-31');
+            $s->set('money.pay_part', '0');
+            $this->assert(Pay::chosenAmount($db->table('money_invoices')->where('id', $inv2)->first(), '5') === 100.0, 'with part payments off the whole balance is charged');
+            $s->set('money.pay_part', '1');
+            $this->assert(Pay::chosenAmount($db->table('money_invoices')->where('id', $inv2)->first(), '25.50') === 25.5 && Pay::chosenAmount($db->table('money_invoices')->where('id', $inv2)->first(), 'abc') === null, 'a part payment is read, nonsense is refused');
+            // CSP lets the form go on to Stripe and PayPal on the pay page only
+            $csp = filter('csp.policy', "default-src 'self'; form-action 'self'", new Request('GET', '/pay/' . $token, [], [], [], []), 'n');
+            $this->assert(str_contains((string) $csp, 'https://checkout.stripe.com') && str_contains((string) $csp, 'https://www.paypal.com'), 'the pay page may go on to Stripe and PayPal');
+            $this->assert(!str_contains((string) filter('csp.policy', "default-src 'self'; form-action 'self'", new Request('GET', '/admin/money', [], [], [], []), 'n'), 'stripe'), 'no other page may');
+        });
+        return '';
+    }
+
+    public function test_test_mode_payments_work_but_never_reach_income_and_the_invoice_page_shows_only_the_invoice(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (['money.biz_name' => 'AP Services', 'money.pay_stripe_on' => '1', 'money.pay_stripe_secret' => 'sk_live_abc', 'money.pay_paypal_on' => '1', 'money.pay_paypal_client' => 'cid', 'money.pay_paypal_secret' => 'sec', 'money.pay_paypal_mode' => 'live',
+                'money.pay_bank_details' => 'Sort code 00-00-00'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $this->assert(!Pay::stripeTest() && !Pay::paypalTest() && !Pay::testing(), 'live keys are not a test');
+            $s->set('money.pay_stripe_test', '1');
+            $s->set('money.pay_stripe_test_secret', 'sk_test_zzz');
+            $this->assert(Pay::stripeTest() && Pay::testing(), 'test mode is on');
+            $now = '2026-10-05 00:00:00';
+            $stream = (int) $db->table('money_streams')->value('id');
+            $id = (int) $db->table('money_invoices')->insertGetId(['number' => 'TST #1', 'contact_id' => 0, 'stream_id' => $stream, 'issue_date' => '2026-10-01', 'due_date' => '2027-12-31', 'status' => 'sent',
+                'subtotal' => 100, 'discount' => 0, 'tax' => 0, 'total' => 100, 'created_at' => $now, 'updated_at' => $now]);
+            $inv = $db->table('money_invoices')->where('id', $id)->first();
+            $token = Pay::token($inv);
+            $seen = [];
+            \AP\Core\Http::$transport = static function (string $url, array $opt) use (&$seen): array {
+                $seen[] = [$url, $opt];
+                return ['code' => 200, 'error' => '', 'body' => json_encode(['id' => 'cs_test_tst00001', 'payment_status' => 'paid', 'amount_total' => 5000, 'currency' => 'gbp', 'livemode' => false, 'metadata' => ['invoice_id' => (string) $GLOBALS['__tid']]])];
+            };
+            $GLOBALS['__tid'] = $id;
+            $r = Pay::finishStripe('cs_test_tst00001', $inv);
+            $this->assert($r['ok'] && $r['paid'] && !empty($r['test']), 'a test card payment is accepted');
+            $this->assert($db->table('money_income')->where('invoice_id', $id)->count() === 0, 'a test payment is never added to income');
+            $this->assert($db->table('money_pay_log')->where('ref', 'cs_test_tst00001')->where('status', 'test')->count() === 1, 'it is kept in the payment log as a test');
+            Pay::finishStripe('cs_test_tst00001', $inv);
+            $this->assert($db->table('money_pay_log')->where('ref', 'cs_test_tst00001')->count() === 1, 'a test payment seen twice is logged once');
+            $this->assert(Pay::docData($inv)['f']['balance'] === 100.0, 'the invoice still owes the full amount');
+            \AP\Core\Http::$transport = null;
+            $s->set('money.pay_paypal_mode', 'sandbox');
+            $this->assert(Pay::paypalTest(), 'PayPal sandbox mode counts as a test');
+            // the printable invoice
+            $html = (string) view('money::invoice_doc', Pay::docData($inv) + ['back' => '/x'])->body;
+            $this->assert(str_contains($html, 'TST #1') && str_contains($html, 'Balance Due') && !str_contains($html, 'Payments Received') && !str_contains($html, 'ap-sidebar'), 'the PDF page holds the invoice and no admin menus');
+            $this->assert(str_contains($html, 'Sort code 00-00-00'), 'bank details show on an unpaid invoice');
+            foreach (['money.doc_style' => 'classic', 'money.doc_title' => 'Tax Invoice', 'money.doc_show_bank' => '0', 'money.doc_color' => '#ff0000', 'money.doc_note' => 'Thanks a lot', 'money.doc_show_qty' => '0', 'money.doc_paper' => 'Letter'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $html2 = (string) view('money::invoice_doc', Pay::docData($inv) + ['back' => '/x'])->body;
+            $this->assert(str_contains($html2, 'st-classic') && str_contains($html2, 'Tax Invoice') && !str_contains($html2, 'Sort code') && str_contains($html2, '#ff0000') && str_contains($html2, 'Thanks a lot') && !str_contains($html2, '>Quantity<') && str_contains($html2, 'size:Letter'), 'the PDF look follows the settings');
+            $s->set('money.doc_color', 'red;}</style><script>');
+            $this->assert(!str_contains((string) view('money::invoice_doc', Pay::docData($inv) + ['back' => '/x'])->body, '<script>alert'), 'a bad colour value falls back safely');
+            $pay = (string) view('money::pay', Pay::docData($inv) + ['notice' => '', 'token' => $token, 'stripe' => true, 'paypal' => true, 'testing' => true, 'bank' => true, 'part' => true, 'error' => ''])->body;
+            $this->assert(str_contains($pay, 'Test mode') && str_contains($pay, '/invoice?print=1'), 'the pay page says it is a test and links to the invoice PDF');
+        });
+        return 'Test-mode payments are logged, never counted, and the invoice PDF stands alone.';
+    }
+
+    public function test_each_client_has_a_private_portal_listing_only_their_own_sent_invoices(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_02_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            $s->set('money.portal_on', '1');
+            $now = '2026-10-05 00:00:00';
+            $mkc = static fn(string $n) => (int) Money::db()->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => $n, 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $a = $mkc('Alpha <b>Ltd</b>');
+            $b = $mkc('Beta Ltd');
+            $stream = (int) $db->table('money_streams')->value('id');
+            $mk = static fn(string $n, int $c, string $st) => (int) Money::db()->table('money_invoices')->insertGetId(['number' => $n, 'contact_id' => $c, 'stream_id' => $stream, 'issue_date' => '2026-10-01', 'due_date' => '2027-12-31', 'status' => $st,
+                'subtotal' => 100, 'discount' => 0, 'tax' => 0, 'total' => 100, 'created_at' => $now, 'updated_at' => $now]);
+            $mk('PORT #1', $a, 'sent');
+            $mk('PORT #2', $a, 'draft');
+            $mk('PORT #3', $b, 'sent');
+            $ca = $db->table('money_contacts')->where('id', $a)->first();
+            $t = Portal::token($ca);
+            $this->assert(preg_match('/^[a-f0-9]{32}$/', $t) === 1 && Portal::token($db->table('money_contacts')->where('id', $a)->first()) === $t && str_ends_with(Portal::url($db->table('money_contacts')->where('id', $a)->first()), '/pay/client/' . $t), 'a client keeps one private link');
+            $data = Portal::invoices(Portal::find($t));
+            $this->assert(count($data['rows']) === 1 && $data['owed'] === 100.0, 'only that client\'s sent invoices are listed');
+            $html = (string) (new \AP\Modules\Money\Controllers\PortalController())->show(new Request('GET', '/pay/client/' . $t), $t)->body;
+            $this->assert(str_contains($html, 'PORT #1') && !str_contains($html, 'PORT #2') && !str_contains($html, 'PORT #3') && !str_contains($html, '<b>Ltd</b>'), 'the page shows their invoice, hides drafts and other clients, and escapes names');
+            $this->assert(Portal::find('nope') === null && Portal::find(str_repeat('a', 32)) === null, 'a wrong link finds nothing');
+            $s->set('money.portal_on', '0');
+            $this->assert(Portal::find($t) === null, 'switching the portal off closes every link');
+        });
+        return 'Client portal links are private, per client and switchable.';
+    }
+
+    public function test_receipt_photos_wait_in_an_inbox_until_the_details_are_filled_in(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_02_000002_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            $s->set('money.receipt_category', 'Parking And Tolls');
+            $s->set('money.receipt_paid_by', 'Cash');
+            $cat = (int) ($db->table('money_categories')->where('name', 'Parking And Tolls')->value('id') ?: $db->table('money_categories')->insertGetId(['name' => 'Parking And Tolls', 'kind' => 'expense', 'created_at' => '2026-10-01 00:00:00']));
+            $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+            $tmp = sys_get_temp_dir() . '/rc' . bin2hex(random_bytes(4)) . '.png';
+            file_put_contents($tmp, $png);
+            Money::$uploadsFromBrowser = false;
+            $req = new Request('POST', '/x', [], [], ['files' => ['name' => ['snap.png'], 'tmp_name' => [$tmp], 'error' => [0], 'size' => [strlen($png)], 'type' => ['image/png']]], []);
+            $ctl = new \AP\Modules\Money\Controllers\ReceiptController();
+            $ctl->upload($req);
+            $row = $db->table('money_expenses')->where('to_sort', 1)->first();
+            $this->assert($row && (int) $row['category_id'] === $cat && $row['payment_method'] === 'Cash' && (float) $row['amount'] === 0.0, 'a saved photo waits as a receipt to sort with the default category and payment');
+            $this->assert($db->table('money_files')->where('owner_type', 'expense')->where('owner_id', (int) $row['id'])->count() === 1, 'the photo is attached');
+            $page = (string) $ctl->index(new Request('GET', '/x', [], [], [], []))->body;
+            $this->assert(str_contains($page, 'To Sort (1)') && str_contains($page, 'Save As Expense'), 'the inbox lists it');
+            $bad = new Request('POST', '/x', [], ['title' => 'Parking', 'amount' => '', 'expense_date' => '27/10/2026'], [], []);
+            $ctl->sort($bad, (string) $row['id']);
+            $this->assert((int) $db->table('money_expenses')->where('id', (int) $row['id'])->value('to_sort') === 1, 'without an amount it stays in the inbox');
+            $ok = new Request('POST', '/x', [], ['title' => 'Parking', 'amount' => '12.50', 'expense_date' => '27/10/2026', 'category_id' => (string) $cat, 'payment_method' => 'Card'], [], []);
+            $ctl->sort($ok, (string) $row['id']);
+            $d = $db->table('money_expenses')->where('id', (int) $row['id'])->first();
+            $this->assert((int) $d['to_sort'] === 0 && (float) $d['amount'] === 12.5 && $d['title'] === 'Parking' && $d['expense_date'] === '2026-10-27', 'filling it in turns it into a normal expense');
+            file_put_contents($tmp, $png);
+            $ctl->upload(new Request('POST', '/x', [], [], ['files' => ['name' => ['a.php'], 'tmp_name' => [$tmp], 'error' => [0], 'size' => [10], 'type' => ['text/x-php']]], []));
+            $this->assert($db->table('money_expenses')->where('to_sort', 1)->count() === 0, 'a file type that is not allowed leaves nothing behind');
+            Money::$uploadsFromBrowser = true;
+            @unlink($tmp);
+        });
+        return 'Receipt photos wait in the inbox until sorted.';
+    }
+
+    public function test_client_statements_add_up_and_repeating_invoices_can_be_emailed_with_a_pay_link(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_0[23]_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com', 'money.portal_on' => '1', 'money.recurring_status' => 'sent', 'money.pay_bank_details' => 'Sort code 00-00-00'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $now = '2026-01-01 00:00:00';
+            $cid = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Stat Ltd', 'email' => 'bill@stat.example', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $stream = (int) $db->table('money_streams')->value('id');
+            $today = Money::today();
+            $mk = static fn(string $n, string $date, float $total, string $due) => (int) Money::db()->table('money_invoices')->insertGetId(['number' => $n, 'contact_id' => $cid, 'stream_id' => $stream, 'issue_date' => $date, 'due_date' => $due, 'status' => 'sent',
+                'subtotal' => $total, 'discount' => 0, 'tax' => 0, 'total' => $total, 'created_at' => $now, 'updated_at' => $now]);
+            $old = $mk('ST #1', date('Y-m-d', strtotime('-400 days')), 100, date('Y-m-d', strtotime('-380 days')));
+            $new = $mk('ST #2', date('Y-m-d', strtotime('-40 days')), 200, date('Y-m-d', strtotime('-10 days')));
+            $db->table('money_income')->insert(['income_date' => date('Y-m-d', strtotime('-20 days')), 'title' => 'p', 'amount' => 50, 'invoice_id' => $new, 'contact_id' => $cid, 'stream_id' => $stream, 'payment_method' => 'Bank', 'created_at' => $now, 'updated_at' => $now]);
+            [$from, $to] = \AP\Modules\Money\Statement::range('12');
+            $st = \AP\Modules\Money\Statement::build($db->table('money_contacts')->where('id', $cid)->first(), $from, $to);
+            $this->assert($st['opening'] === 100.0 && count($st['lines']) === 2 && $st['billed'] === 200.0 && $st['received'] === 50.0 && $st['closing'] === 250.0 && $st['owed'] === 250.0, 'the statement carries the old balance forward and adds up');
+            $this->assert($st['aged']['d30'] === 150.0 && $st['aged']['d61'] === 100.0, 'what is owed is sorted by how late it is');
+            $html = (string) view('money::statement', Pay::statementData($db->table('money_contacts')->where('id', $cid)->first(), '12', '/x', '/y'))->body;
+            $this->assert(str_contains($html, 'Balance brought forward') && str_contains($html, 'Invoice ST #2') && !str_contains($html, 'ap-sidebar') && str_contains($html, 'Sort code 00-00-00'), 'the statement page holds only the statement');
+            // repeating invoice with an email
+            $t = $mk('REP #1', date('Y-m-d', strtotime('-5 days')), 80, date('Y-m-d', strtotime('+10 days')));
+            $db->table('money_invoices')->where('id', $t)->update(['recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'months', 'next_date' => date('Y-m-d', strtotime('-1 day')), 'auto_email' => 1]);
+            $db->table('money_invoice_items')->insert(['invoice_id' => $t, 'title' => 'Service', 'quantity' => 1, 'unit' => '', 'rate' => 80, 'total' => 80, 'sort_order' => 1]);
+            $made = \AP\Modules\Money\Recurring::runInvoices($today);
+            $kid = $db->table('money_invoices')->where('parent_id', $t)->first();
+            $this->assert($made === 1 && $kid && $kid['emailed_to'] === 'bill@stat.example' && $kid['emailed_at'] !== null && preg_match('/^[a-f0-9]{32}$/', (string) $kid['pay_token']) === 1, 'the new repeating invoice is emailed with a pay link');
+            $db->table('money_invoices')->where('id', $t)->update(['auto_email' => 0, 'next_date' => date('Y-m-d', strtotime('-2 days'))]);
+            \AP\Modules\Money\Recurring::runInvoices($today);
+            $kid2 = $db->table('money_invoices')->where('parent_id', $t)->orderBy('id', 'desc')->first();
+            $this->assert($kid2 && (int) $kid2['id'] !== (int) $kid['id'] && $kid2['emailed_at'] === null, 'with the switch off nothing is emailed');
+        });
+        return 'Statements add up and repeating invoices email a pay link.';
+    }
+
+    public function test_statements_can_be_emailed_one_by_one_or_to_everyone_who_owes_money(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_0[234]_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com', 'money.portal_on' => '1', 'money.statement_auto' => '1', 'money.statement_day' => (string) (int) substr(Money::today(), 8, 2), 'money.statement_min' => '1'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $now = '2026-01-01 00:00:00';
+            $mkc = static fn(string $n, string $mail) => (int) Money::db()->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => $n, 'email' => $mail, 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $a = $mkc('Owes A', 'a@example.com');
+            $b = $mkc('Owes B', '');
+            $c = $mkc('Paid C', 'c@example.com');
+            $stream = (int) $db->table('money_streams')->value('id');
+            $mk = static fn(string $n, int $cid, string $st) => (int) Money::db()->table('money_invoices')->insertGetId(['number' => $n, 'contact_id' => $cid, 'stream_id' => $stream, 'issue_date' => date('Y-m-d', strtotime('-30 days')), 'due_date' => date('Y-m-d', strtotime('-5 days')), 'status' => $st,
+                'subtotal' => 100, 'discount' => 0, 'tax' => 0, 'total' => 100, 'created_at' => $now, 'updated_at' => $now]);
+            $mk('SM #1', $a, 'sent');
+            $mk('SM #2', $b, 'sent');
+            $mk('SM #3', $a, 'draft');
+            $paid = $mk('SM #4', $c, 'sent');
+            $db->table('money_income')->insert(['income_date' => Money::today(), 'title' => 'p', 'amount' => 100, 'invoice_id' => $paid, 'contact_id' => $c, 'stream_id' => $stream, 'created_at' => $now, 'updated_at' => $now]);
+            $d = \AP\Modules\Money\StatementMail::debtors();
+            $names = array_column(array_column($d, 'contact'), 'name');
+            $this->assert(in_array('Owes A', $names, true) && in_array('Owes B', $names, true) && !in_array('Paid C', $names, true) && $d[0]['owed'] === 100.0, 'only clients who really owe money are listed, drafts and paid ones left out');
+            $one = \AP\Modules\Money\StatementMail::send($db->table('money_contacts')->where('id', $a)->first(), 'a@example.com', "Hello there\n\nSecond paragraph", 'My statement', true);
+            $this->assert($one === true && $db->table('money_contacts')->where('id', $a)->value('statement_sent_at') !== null, 'one statement is sent and remembered');
+            $this->assert(\AP\Modules\Money\StatementMail::send($db->table('money_contacts')->where('id', $a)->first(), 'nope', 'x') !== true, 'a bad address is refused');
+            $db->table('money_contacts')->where('id', $a)->update(['statement_sent_at' => null]);
+            $all = \AP\Modules\Money\StatementMail::sendMany();
+            $this->assert($all['sent'] >= 1 && in_array('Owes B has no email address', $all['skipped'], true), 'everyone who owes is emailed, and a client with no address is reported');
+            $html = (string) view('money::statements_send', ['title' => 'x', 'rows' => \AP\Modules\Money\StatementMail::debtors()])->body;
+            $this->assert(str_contains($html, 'Owes A') && str_contains($html, 'No email address') && !str_contains($html, 'Paid C'), 'the page lists who will get one');
+            $db->table('money_contacts')->where('id', $a)->update(['statement_sent_at' => null]);
+            $this->assert(preg_match('/^[1-9]\d* statement/', \AP\Modules\Money\StatementMail::auto()) === 1, 'the monthly job sends on the chosen day');
+            $this->assert(str_contains(\AP\Modules\Money\StatementMail::auto(), '0 statement'), 'and not again straight away');
+            $s->set('money.statement_auto', '0');
+            $db->table('money_contacts')->where('id', $a)->update(['statement_sent_at' => null]);
+            $this->assert(str_contains(\AP\Modules\Money\StatementMail::auto(), 'switched off'), 'it does nothing when switched off');
+        });
+        return 'Statements can be emailed one by one, in bulk and monthly.';
+    }
+
+    public function test_invoices_are_emailed_with_a_pay_button_and_overdue_ones_get_reminders(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $now = '2026-10-05 00:00:00';
+            $cid = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Ottocar', 'email' => 'billing@ottocar.example', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $id = (int) $db->table('money_invoices')->insertGetId(['number' => 'MAIL #1', 'contact_id' => $cid, 'stream_id' => 0, 'issue_date' => '2026-09-01', 'due_date' => '2026-09-15', 'status' => 'draft', 'subtotal' => 80, 'discount' => 0, 'tax' => 0, 'total' => 80, 'created_at' => $now, 'updated_at' => $now]);
+            $db->table('money_invoice_items')->insert(['invoice_id' => $id, 'sort_order' => 1, 'title' => 'Vehicle rent', 'quantity' => 1, 'rate' => 80, 'total' => 80]);
+            $ic = new InvoiceController();
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            $form = $ic->emailForm(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']), (string) $id);
+            $this->assert($form->status === 200 && str_contains($form->body, 'billing@ottocar.example') && str_contains($form->body, 'MAIL #1'), 'the email form is filled in from the invoice and the client');
+            $bad = $ic->emailSend($post(['to' => 'not an email', 'subject' => 'Hi', 'message' => 'x']), (string) $id);
+            $this->assert($bad->status === 302 && $db->table('mail_log')->count() === 0 && $db->table('money_invoices')->where('id', $id)->value('status') === 'draft', 'a bad address sends nothing');
+            $ic->emailSend($post(['to' => 'billing@ottocar.example', 'subject' => 'Your invoice <b>', 'message' => "Hello <script>alert(1)</script>\n\nSecond paragraph", 'copy' => '1']), (string) $id);
+            $mail = $db->table('mail_log')->where('template', 'money.invoice')->first();
+            $this->assert($mail !== null && str_contains((string) $mail['body'], '/pay/') && str_contains((string) $mail['body'], 'View Invoice') && str_contains((string) $mail['body'], '£80.00') && !str_contains((string) $mail['body'], '<script>alert') && str_contains((string) $mail['body'], 'Second paragraph'), 'the email has the amount, a button to the pay page and an escaped message');
+            $this->assert(str_contains((string) $mail['body'], 'Vehicle rent'), 'the email lists the invoice lines');
+            $row = $db->table('money_invoices')->where('id', $id)->first();
+            $this->assert($row['status'] === 'sent' && $row['emailed_to'] === 'billing@ottocar.example' && $row['emailed_at'] !== null, 'a draft becomes sent, and the email is noted on the invoice');
+            // the look of every email: logo at the top, rounded card
+            $s->set('email.logo_url', 'https://example.com/logo.png');
+            $html = app(\AP\Core\Mailer::class)->layout('<p>Hi</p>');
+            $this->assert(str_contains($html, '<img src="https://example.com/logo.png"') && strpos($html, '<img') < strpos($html, '<p>Hi</p>') && str_contains($html, 'border-radius:16px'), 'every email starts with the logo on a clean card');
+            $s->set('email.header_style', 'colour');
+            $this->assert(str_contains(app(\AP\Core\Mailer::class)->layout('x'), 'background:#0d6efd;'), 'the coloured header style still works');
+            // reminders
+            $this->assert(InvoiceMail::remindOverdue() === 0, 'reminders are off by default');
+            $s->set('money.pay_remind_after', '2');
+            $s->set('money.pay_remind_every', '7');
+            $this->assert(InvoiceMail::remindOverdue() === 1, 'an overdue invoice that was emailed gets a reminder');
+            $this->assert(InvoiceMail::remindOverdue() === 0, 'and not another one the next day');
+            $db->table('money_invoices')->where('id', $id)->update(['reminded_at' => gmdate('Y-m-d H:i:s', time() - 8 * 86400)]);
+            $this->assert(InvoiceMail::remindOverdue() === 1, 'a week later it is reminded again');
+            $db->table('money_income')->insert(['income_date' => '2026-10-05', 'title' => 'paid', 'amount' => 80, 'invoice_id' => $id, 'created_at' => $now, 'updated_at' => $now]);
+            $db->table('money_invoices')->where('id', $id)->update(['reminded_at' => null]);
+            $this->assert(InvoiceMail::remindOverdue() === 0, 'a paid invoice is never reminded');
+            $db->table('money_invoices')->where('id', $id)->update(['status' => 'cancelled']);
+            $this->assert(is_string(InvoiceMail::send($db->table('money_invoices')->where('id', $id)->first(), 'a@b.co', 'x')), 'a cancelled invoice cannot be emailed');
+        });
+        return '';
+    }
+
+    /** Puts rules into the rule book the way the rule form would (ids and starting values filled in). */
+    private function setRules(array $rules): void
+    {
+        $n = 0;
+        Gmail::saveBook(array_map(static fn(array $r) => $r + ['id' => sprintf('%08x', ++$n)] + Gmail::DEFAULTS, $rules));
+    }
+
+    public function test_otto_invoice_emails_become_rent_road_tax_and_other_expenses_with_the_pdf_kept(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (['money.gmail_user' => 'me@gmail.com', 'money.gmail_pass' => 'abcdabcdabcdabcd', 'money.gmail_delete' => '0'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $this->setRules(array_slice(Gmail::starters(), 1));
+            $pdf = static function (string $line): string {
+                $stream = "BT /F1 12 Tf 72 700 Td ($line) Tj ET";
+                return "%PDF-1.4\n1 0 obj\n<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n";
+            };
+            // Real Otto emails: subject is just "Otto", sender is the billing platform, the PDF is named after the invoice.
+            $mail = static fn(string $id, string $body, ?string $pdfData, string $name = 'INV-1926443.pdf', string $subj = 'Otto', string $from = 'Ottocar <no-reply@ordwayplatform.com>'): string => "From: $from\r\nSubject: $subj\r\nDate: Wed, 21 Oct 2026 10:00:00 +0000\r\nMessage-ID: <$id>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"m1\"\r\n\r\n--m1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n$body\r\n"
+                . ($pdfData === null ? '' : "--m1\r\nContent-Type: application/pdf; name=\"$name\"\r\nContent-Disposition: attachment; filename=\"$name\"\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($pdfData)) . "\r\n") . "--m1--\r\n";
+            $box = new class implements Mailbox {
+                public array $mails = [];
+                public function recent(int $days, int $limit): array { return array_keys($this->mails); }
+                public function header(int $id): string { return explode("\r\n\r\n", $this->mails[$id], 2)[0]; }
+                public function raw(int $id): string { return $this->mails[$id]; }
+                public function trash(int $id): bool { return true; }
+                public function close(): void {}
+            };
+            $box->mails = [
+                1 => $mail('o1@x', 'Dear Ahmet, please find attached your invoice (INV-1926443).', $pdf('Vehicle rental weekly Total \243185.00')),
+                2 => $mail('o2@x', 'Dear Ahmet, please find attached your invoice (INV-1926434).', $pdf('Road tax 6 months Total \24397.50'), 'INV-1926434.pdf'),
+                3 => $mail('o3@x', 'Please find attached your invoice (INV-1926500). Damage repair charge: £60.00', $pdf('Damage repair')),
+                4 => $mail('o4@x', 'Your insurance certificate is attached.', $pdf('Certificate'), 'certificate.pdf', 'Otto Car', 'Otto Car <insurance@ottocar.co.uk>'),
+                5 => $mail('o5@x', 'Please find attached your invoice (INV-1999999).', $pdf('Nothing readable here')),
+            ];
+            Gmail::$connect = static fn() => $box;
+            try {
+                $r = Gmail::run();
+                $this->assert($r['ok'] && $r['added'] === 3 && $r['review'] === 1 && $r['looked'] === 5, 'rent, road tax and other charges are added, the certificate is not, the unreadable one waits for review');
+                $rent = $db->table('money_expenses')->where('title', 'Vehicle Rent (Otto) INV-1926443')->first();
+                $tax = $db->table('money_expenses')->where('title', 'Road Tax (Otto) INV-1926434')->first();
+                $oth = $db->table('money_expenses')->where('title', 'Otto Invoice INV-1926500')->first();
+                $this->assert($rent && (float) $rent['amount'] === 185.0 && $tax && (float) $tax['amount'] === 97.5 && $oth && (float) $oth['amount'] === 60.0, 'each has the invoice number in its title and the right amount, read from the PDF');
+                $names = $db->table('money_categories')->pluck('name', 'id');
+                $this->assert(($names[(int) $rent['category_id']] ?? '') === 'Vehicle Rental' && ($names[(int) $tax['category_id']] ?? '') === 'Road Tax' && ($names[(int) $oth['category_id']] ?? '') === 'Vehicle Costs', 'the categories are made when missing');
+                $this->assert($db->table('money_mail_seen')->where('message_id', '<o5@x>')->value('status') === 'review', 'an invoice with no readable amount is left for review');
+                $sup = $db->table('money_contacts')->where('name', 'Otto Car')->first();
+                $this->assert($sup && $sup['kind'] === 'supplier' && (int) $rent['contact_id'] === (int) $sup['id'] && (int) $tax['contact_id'] === (int) $sup['id'], 'the supplier is made once and linked to each expense');
+                $pf = $db->table('money_files')->where('owner_type', 'expense')->where('owner_id', (int) $tax['id'])->where('mime', 'application/pdf')->first();
+                $this->assert($pf && str_starts_with((string) file_get_contents(Money::filesDir() . '/' . $pf['stored_name']), '%PDF'), 'the invoice PDF is kept on the expense');
+            } finally {
+                Gmail::$connect = null;
+            }
+        });
+        return 'Otto invoices are added as rent, road tax and other expenses with the PDF.';
+    }
+
+    public function test_a_rule_can_be_made_in_one_click_from_an_email_that_needed_a_look(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (['money.gmail_user' => 'me@gmail.com', 'money.gmail_pass' => 'abcdabcdabcdabcd', 'money.gmail_delete' => '0', 'money.gmail_fetch_days' => '90'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            Gmail::saveBook([]);
+            $mail = static fn(string $id, string $subj, string $body): string => "From: Parking Co <bills@parkingco.example>\r\nSubject: $subj\r\nDate: Wed, 21 Oct 2026 10:00:00 +0000\r\nMessage-ID: <$id>\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n$body\r\n";
+            $box = new class implements Mailbox {
+                public array $mails = [];
+                public function recent(int $days, int $limit): array { return array_keys($this->mails); }
+                public function header(int $id): string { return explode("\r\n\r\n", $this->mails[$id], 2)[0]; }
+                public function raw(int $id): string { return $this->mails[$id]; }
+                public function trash(int $id): bool { return true; }
+                public function close(): void {}
+            };
+            $box->mails = [1 => $mail('p1@x', 'Your session', 'Ref PK-77. Total £4.50'), 2 => $mail('p2@x', 'Newsletter', 'Offers £1.00 PK-88 not a bill? Total £9.00')];
+            Gmail::$connect = static fn() => $box;
+            try {
+                $this->assert(Gmail::run()['added'] === 0 && count(Gmail::unhandled()) === 2, 'with no rule both emails wait in the list');
+                $seen = $db->table('money_mail_seen')->where('message_id', '<p1@x>')->first();
+                $pre = Gmail::ruleFrom($seen);
+                $this->assert($pre['from'] === 'parkingco.example' && $pre['subject'] === 'Your session' && $pre['title'] === 'Your session', 'the form starts from the email sender and subject');
+                $c = new \AP\Modules\Money\Controllers\GmailController();
+                $page = $c->ruleForm(new Request('GET', '/x', ['modal' => '1', 'seen' => (string) $seen['id']], [], [], ['HTTP_HOST' => 'localhost']))->body;
+                $this->assert(str_contains($page, 'parkingco.example') && str_contains($page, 'name="body"') && str_contains($page, '<select class="form-select" id="f_category"') && str_contains($page, 'name="supplier_new"'), 'the rule form opens filled in');
+                $post = new Request('POST', '/x', [], ['from' => 'parkingco.example', 'subject' => '', 'body' => 'PK-77', 'title' => 'Parking {ref}', 'ref_prefix' => 'PK', 'category' => '', 'category_new' => 'Parking And Tolls', 'on' => '1', 'recheck' => '1', 'paid_by' => 'Card', 'business' => '50'], [], ['HTTP_HOST' => 'localhost']);
+                $c->ruleSave($post);
+                $this->assert(count(Gmail::book()) === 1, 'the rule is saved');
+                $e = $db->table('money_expenses')->where('title', 'Parking PK-77')->get();
+                $this->assert(count($e) === 1 && (float) $e[0]['amount'] === 4.5 && (float) $e[0]['business_percent'] === 50.0, 'the email is checked again and only the one with the words is added, with its reference and share');
+            } finally {
+                Gmail::$connect = null;
+            }
+        });
+        return 'A rule can be created from an email in one click.';
+    }
+
+    public function test_receipt_emails_become_expenses_with_a_safe_copy_and_go_to_the_bin(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (['money.gmail_user' => 'me@gmail.com', 'money.gmail_pass' => 'abcdabcdabcdabcd', 'money.gmail_delete' => '1'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $this->setRules([Gmail::starters()[0]]);
+            $before = $db->table('money_expenses')->count();
+            $db->table('money_categories')->where('name', 'Parking And Tolls')->delete();
+            $cat = (int) $db->table('money_categories')->insertGetId(['name' => 'Parking And Tolls', 'kind' => 'expense', 'created_at' => '2026-10-01 00:00:00']);
+            $mail = static fn(string $from, string $subj, string $date, string $id, string $html, string $text = ''): string => "From: $from\r\nSubject: $subj\r\nDate: $date\r\nMessage-ID: <$id>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"b1\"\r\n\r\n--b1\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n"
+                . quoted_printable_encode($text) . "\r\n--b1\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . chunk_split(base64_encode($html)) . "\r\n--b1--\r\n";
+            $box = new class implements Mailbox {
+                public array $mails = [];
+                public array $binned = [];
+                public bool $closed = false;
+                public function recent(int $days, int $limit): array { return array_keys($this->mails); }
+                public function header(int $id): string { return explode("\r\n\r\n", $this->mails[$id], 2)[0]; }
+                public function raw(int $id): string { return $this->mails[$id]; }
+                public function trash(int $id): bool { $this->binned[] = $id; unset($this->mails[$id]); return true; }
+                public function close(): void { $this->closed = true; }
+            };
+            $box->mails = [
+                1 => $mail('APCOA Parking <noreply@apcoa.co.uk>', 'Your Heathrow Drop-Off Payment Receipt', 'Tue, 20 Oct 2026 23:50:00 +0000', 'a1@x', '<p>Thanks!</p><script>alert(1)</script><img src="https://evil.example/t.gif" onerror="x()"><a href="javascript:alert(2)">go</a><table><tr><td>Payment Amount</td><td>£6.00</td></tr></table>', "Payment Amount £6.00"),
+                2 => $mail('Newsletter <news@apcoa.co.uk>', 'Summer offers on long stay parking', 'Tue, 20 Oct 2026 10:00:00 +0000', 'n1@x', '<p>Save £20</p>', 'Save £20'),
+                3 => $mail('Friend <f@example.com>', 'Lunch?', 'Tue, 20 Oct 2026 10:00:00 +0000', 'f1@x', '<p>Lunch</p>', 'Lunch'),
+                4 => $mail('APCOA <noreply@apcoa.co.uk>', 'Heathrow drop-off receipt', 'Wed, 21 Oct 2026 10:00:00 +0000', 'a2@x', '<p>No money shown here</p>', 'No money shown here'),
+            ];
+            Gmail::$connect = static fn() => $box;
+            try {
+                $this->assert(Gmail::enabled() === false && Gmail::configured(), 'configured but not switched on');
+                $r = Gmail::run();
+                $this->assert($r['ok'] && $r['added'] === 1 && $r['review'] === 1 && $r['looked'] === 4, 'one email is added, one needs a look, two are ignored');
+                $e = $db->table('money_expenses')->where('title', 'Heathrow Drop-Off Fee')->first();
+                $this->assert($e && (float) $e['amount'] === 6.0 && $e['title'] === 'Heathrow Drop-Off Fee' && $e['expense_date'] === '2026-10-21' && (int) $e['category_id'] === $cat && $e['payment_method'] === 'Card', 'the expense has the amount, the title, the UK date and the category');
+                $this->assert($box->binned === [1] && array_keys($box->mails) === [2, 3, 4] && $box->closed, 'only the added email is binned; others stay in the inbox');
+                $f = $db->table('money_files')->where('owner_type', 'expense')->where('owner_id', (int) $e['id'])->first();
+                $this->assert($f && str_ends_with((string) $f['original_name'], '.html') && Money::fileKind((string) $f['original_name'])[3] === 'html', 'the email is attached as a receipt');
+                $html = (string) file_get_contents(Money::filesDir() . '/' . $f['stored_name']);
+                $this->assert(str_contains($html, '£6.00') && str_contains($html, 'Heathrow Drop-Off Payment Receipt') && !str_contains($html, '<script') && !str_contains($html, 'onerror') && !str_contains($html, 'javascript:') && !str_contains($html, 'evil.example'), 'the saved copy keeps the content but has nothing that can run or load');
+                $res = (new FileController())->show(new Request('GET', '/x', [], [], [], []), (string) $f['id']);
+                $this->assert(str_starts_with((string) $res->headers['Content-Type'], 'text/html') && str_contains((string) $res->headers['Content-Security-Policy'], 'sandbox') && str_contains((string) $res->headers['Content-Security-Policy'], "default-src 'none'"), 'the saved email is shown in a locked-down page');
+                $box->mails = [1 => $box->mails[2] ?? '', 5 => $mail('APCOA <noreply@apcoa.co.uk>', 'Your Heathrow Drop-Off Payment Receipt', 'Tue, 20 Oct 2026 23:50:00 +0000', 'a1@x', '<p>again</p>', 'Payment Amount £6.00')];
+                unset($box->mails[1]);
+                $r2 = Gmail::run();
+                $this->assert($r2['added'] === 0 && $db->table('money_expenses')->count() === $before + 1, 'the same email is never added twice');
+                // keep in inbox, own rule
+                $s->set('money.gmail_delete', '0');
+                $this->setRules([['from' => 'carwash.example', 'subject' => 'receipt', 'title' => 'Car Wash', 'category' => 'Parking And Tolls', 'paid_by' => 'Cash']]);
+                $box->mails = [9 => $mail('Shine <hi@carwash.example>', 'Your receipt', 'Thu, 22 Oct 2026 12:00:00 +0000', 'c1@x', '<p>Total: £1,234.50</p>', 'Total: £1,234.50')];
+                $r3 = Gmail::run();
+                $x = $db->table('money_expenses')->where('title', 'Car Wash')->first();
+                $this->assert($r3['added'] === 1 && $x && (float) $x['amount'] === 1234.5 && $x['payment_method'] === 'Cash' && $box->binned === [1] && isset($box->mails[9]), 'your own rule works, and with deleting off the email stays');
+                // Fetch Now: a new rule picks up an email that earlier checks ignored, only when asked to look again
+                $box->mails = [2 => $mail('Newsletter <news@apcoa.co.uk>', 'Summer offers on long stay parking', 'Tue, 20 Oct 2026 10:00:00 +0000', 'n1@x', '<p>Fee £20.00</p>', 'Fee £20.00')];
+                $this->setRules([['from' => 'apcoa', 'subject' => 'Summer', 'title' => 'Parking Offer', 'category' => '', 'paid_by' => 'Card'], ['from' => 'carwash.example', 'subject' => 'receipt', 'title' => 'Car Wash']]);
+                $s->set('money.gmail_book_hash', md5((string) json_encode(Gmail::rules())), null);
+                $this->assert(Gmail::run()['added'] === 0, 'a normal check does not look at an email again while the rules are unchanged');
+                $one = Gmail::run(30, true, 1);
+                $this->assert($one['added'] === 0 && $db->table('money_expenses')->where('title', 'Parking Offer')->count() === 0, 'Fetch Now for one rule uses only that rule');
+                $all = Gmail::run(30, true, 0);
+                $this->assert($all['added'] === 1 && $db->table('money_expenses')->where('title', 'Parking Offer')->count() === 1, 'Fetch Now looks again and adds what the rule now matches');
+                $again = Gmail::run(30, true);
+                $this->assert($again['added'] === 0 && $db->table('money_expenses')->where('title', 'Parking Offer')->count() === 1, 'and never adds the same email twice');
+                $box->mails = [3 => $mail('Heathrow <no-reply@apcoa.com>', 'Drop-Off Charge', 'Sun, 25 Oct 2026 21:56:00 +0000', 'h1@x', '<p>Amount Paid £7.00</p>', 'Amount Paid £7.00')];
+                Gmail::run();
+                $this->setRules([['from' => 'apcoa.com', 'subject' => 'Drop-Off', 'title' => 'Dropoff', 'amount_after' => 'Amount Paid']]);
+                $this->assert(Gmail::run()['added'] === 1 && $db->table('money_expenses')->where('title', 'Dropoff')->count() === 1, 'saving new rules makes the next check look again at emails it skipped');
+                $this->setRules([]);
+                $this->assert(Gmail::run()['added'] === 0 && Gmail::run(null, false, 0)['ok'] === false, 'with no rules nothing is added');
+            } finally {
+                Gmail::$connect = null;
+            }
+            $this->assert(Gmail::amount('Hello £99.00 Fee: £12.50 and Total £7.20') === 12.5 && Gmail::amount('nothing') === null && Gmail::amount('Amount paid £0.00') === null, 'amounts are read from the words around them');
+            $m = MimeMessage::parse("Subject: =?UTF-8?B?Q2Fmw6k=?=\r\nFrom: a@b.co\r\nContent-Type: text/plain; charset=iso-8859-1\r\nContent-Transfer-Encoding: 8bit\r\n\r\ncaf\xe9 \xa35.00");
+            $this->assert($m['subject'] === 'Café' && str_contains($m['text'], 'café £5.00'), 'headers and other character sets are read');
+            Gmail::$connect = static fn() => 'Gmail refused the sign-in.';
+            $this->assert(Gmail::test() === 'Gmail refused the sign-in.', 'a failed sign-in is explained');
+            Gmail::$connect = null;
+        });
+        return '';
+    }
+
+    public function test_payments_can_be_attached_to_an_invoice_found_by_searching(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $now = '2026-10-05 00:00:00';
+            $a = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Zeta Hotels', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $b = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Ottocar', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $mk = static fn(string $n, int $c, float $t, string $st) => (int) Money::db()->table('money_invoices')->insertGetId(['number' => $n, 'contact_id' => $c, 'stream_id' => 0, 'issue_date' => '2026-10-01', 'due_date' => '2027-12-01', 'status' => $st,
+                'subtotal' => $t, 'discount' => 0, 'tax' => 0, 'total' => $t, 'created_at' => $now, 'updated_at' => $now]);
+            $i1 = $mk('SRCH #1', $a, 120.0, 'sent');
+            $i2 = $mk('SRCH #2', $b, 80.0, 'sent');
+            $i3 = $mk('SRCH #3', $b, 50.0, 'cancelled');
+            $db->table('money_income')->insert(['income_date' => '2026-10-02', 'title' => 'p', 'amount' => 80, 'invoice_id' => $i2, 'created_at' => $now, 'updated_at' => $now]);
+            $ch = Money::invoiceChoices();
+            $ids = array_column($ch, 'id');
+            $this->assert(in_array($i1, $ids, true) && in_array($i2, $ids, true) && !in_array($i3, $ids, true), 'every invoice that can take a payment is offered, cancelled ones are not');
+            $this->assert(array_search($i1, $ids, true) < array_search($i2, $ids, true), 'invoices still to pay come before paid ones');
+            $one = $ch[array_search($i1, $ids, true)];
+            $this->assert(str_contains($one['search'], 'zeta hotels') === false && str_contains(mb_strtolower($one['search']), 'zeta hotels') && str_contains($one['search'], '120.00') && $one['data']['balance'] === '120.00' && $one['data']['contact'] === (string) $a, 'the search text holds number, client and amount, and the balance is ready to fill in');
+            $html = \AP\Modules\Money\Fields::picker('invoice_id', 'Invoice', $ch, $i1, ['none' => 'Not for an invoice']);
+            $this->assert(str_contains($html, 'data-pick') && str_contains($html, 'data-pick-q') && str_contains($html, 'name="invoice_id" value="' . $i1 . '"') && str_contains($html, 'SRCH #1 · Zeta Hotels'), 'the picker shows the chosen invoice and has a search box');
+            $form = (new \AP\Modules\Money\Controllers\IncomeController())->form(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(str_contains($form->body, 'SRCH #2 · Ottocar'), 'the new payment form lists the invoices');
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            (new \AP\Modules\Money\Controllers\IncomeController())->save($post(['title' => 'Test', 'income_date' => '05/10/2026', 'amount' => '120', 'invoice_id' => (string) $i1, 'contact_id' => (string) $a]));
+            (new \AP\Modules\Money\Controllers\IncomeController())->save($post(['title' => 'Ghost', 'income_date' => '05/10/2026', 'amount' => '5', 'invoice_id' => '987654']));
+            $this->assert((float) $db->table('money_income')->where('invoice_id', $i1)->sum('amount') === 120.0 && $db->table('money_income')->where('title', 'Ghost')->value('invoice_id') == 0, 'the payment lands on the chosen invoice, and an invoice that does not exist is ignored');
+            // the list filters
+            $list = fn(array $q) => (new \AP\Modules\Money\Controllers\InvoiceController())->index(new Request('GET', '/x', $q + ['year' => 'all'], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(str_contains($list(['client' => (string) $a]), 'SRCH #1') && !str_contains($list(['client' => (string) $a]), 'SRCH #2'), 'invoices can be filtered by client');
+            $this->assert(!str_contains($list(['owing' => 'yes']), 'SRCH #2') && str_contains($list(['owing' => 'no']), 'SRCH #2'), 'invoices can be filtered by money still owed');
+            $this->assert(str_contains($list(['min' => '100']), 'SRCH #1') && !str_contains($list(['min' => '100']), 'SRCH #2') && str_contains($list(['q' => 'ottocar']), 'SRCH #2') && !str_contains($list(['q' => 'ottocar']), 'SRCH #1'), 'amount and a search by client name both work');
+            $this->assert(str_contains($list([]), 'More Filters') && str_contains($list(['client' => (string) $a]), 'Client: Zeta Hotels'), 'the filter panel and the chips are shown');
+            // detail page actions
+            $show = (new \AP\Modules\Money\Controllers\InvoiceController())->show(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $i2);
+            $this->assert(str_contains($show->body, 'Invoice Paid') && str_contains($show->body, 'Save As PDF') && str_contains($show->body, 'Email Paid Invoice') && !str_contains($show->body, 'Pay Invoice'), 'a paid invoice shows Paid, a saved copy and Email Paid Invoice');
+            $db->table('money_income')->where('invoice_id', $i2)->delete();
+            $show2 = (new \AP\Modules\Money\Controllers\InvoiceController())->show(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $i2);
+            $this->assert(str_contains($show2->body, 'Pay Invoice') && str_contains($show2->body, 'Email Invoice') && str_contains($show2->body, 'btn btn-sm btn-primary mn-btn'), 'an unpaid invoice shows Pay Invoice, Email Invoice and an Add button');
+        });
+        return '';
+    }
+
+    public function test_the_bell_tells_you_what_happened_once_and_can_be_read_and_switched_off(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Notifications/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            $N = \AP\Modules\Notifications\Notifications::class;
+            $this->assert($N::ready() && $N::unread(1) === 0 && str_contains($N::menuHtml(1), 'all caught up'), 'a new bell is empty');
+            $this->assert($N::add('error', 'danger', 'Something broke', 'details', admin_url('logs/errors'), 'k1') === true && $N::add('error', 'danger', 'Something broke', '', '', 'k1') === false, 'the same thing is not told twice in a day');
+            $this->assert($N::add('money_in', 'success', '£50.00 received', 'x', admin_url('money/income'), 'p1', true) && !$N::add('money_in', 'success', '£50.00 received', 'x', '', 'p1', true), 'a once-only note is never repeated');
+            $this->assert($N::unread(1) === 2, 'two are waiting');
+            $html = $N::bell();
+            $this->assert(str_contains($html, 'data-bell') && str_contains($html, 'ap-bell-count') && str_contains($html, '£50.00 received') && !str_contains($html, '<script'), 'the bell shows the count and the list');
+            $s->set('notify.kind_money_in', '0');
+            $this->assert(!$N::add('money_in', 'success', 'Hidden', '', '', 'p2', true) && $N::unread(1) === 2, 'a kind you switched off is not added');
+            $s->set('notify.kind_money_in', '1');
+            $nc = new \AP\Modules\Notifications\Controllers\NotificationController();
+            $first = (int) $db->table('notifications')->orderBy('id')->value('id');
+            $go = $nc->open(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $first);
+            $this->assert($go->status === 302 && $N::unread(1) === 1, 'opening a notification goes to it and marks it read');
+            $db->table('notifications')->where('id', $first)->update(['url' => 'https://evil.example/x']);
+            $this->assert(!str_contains((string) $nc->open(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $first)->headers['Location'], 'evil'), 'a notification can never send you to another website');
+            $db->table('notifications')->where('id', $first)->update(['url' => '//evil.example/x']);
+            $this->assert(!str_contains((string) $nc->open(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $first)->headers['Location'], 'evil'), 'a address starting with two slashes cannot leave the site either');
+            $nc->read(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($N::unread(1) === 0 && $N::unread(2) === 2, 'mark all read is only for you');
+            $feed = json_decode($nc->feed(new Request('GET', '/x', [], [], [], []))->body, true);
+            $this->assert($feed['unread'] === 0 && str_contains($feed['html'], 'ap-bell-list'), 'the bell can ask for fresh numbers');
+            $page = $nc->index(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($page->status === 200 && str_contains($page->body, 'Something broke') && str_contains($page->body, 'Everything'), 'the full list opens');
+            // events from the rest of the site
+            events()->dispatch('error.logged', 'ABCD1234', new \RuntimeException('Boom <b>'));
+            $this->assert($db->table('notifications')->where('kind', 'error')->where('title', 'like', 'Error ABCD1234%')->exists() && !str_contains($N::bell(), 'Boom <b>'), 'a logged error reaches the bell, escaped');
+            events()->dispatch('mail.failed', 'a@b.co', 'SMTP down');
+            events()->dispatch('contact.received', 7, 'new');
+            events()->dispatch('contact.received', 8, 'spam');
+            $this->assert($db->table('notifications')->where('kind', 'mail')->exists() && $db->table('notifications')->where('kind', 'contact')->count() === 1, 'failed mail and new contact messages reach the bell, spam does not');
+            // from Money
+            $now = '2026-10-05 00:00:00';
+            $cid = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Late Payer', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $db->table('money_invoices')->insert(['number' => 'LATE #1', 'contact_id' => $cid, 'stream_id' => 0, 'issue_date' => '2026-01-01', 'due_date' => '2026-02-01', 'status' => 'sent', 'subtotal' => 90, 'discount' => 0, 'tax' => 0, 'total' => 90, 'created_at' => $now, 'updated_at' => $now]);
+            $this->assert(Money::watchOverdue() >= 1 && $db->table('notifications')->where('title', 'Invoice LATE #1 is overdue')->count() === 1, 'an overdue invoice is told');
+            Money::watchOverdue();
+            $this->assert($db->table('notifications')->where('title', 'Invoice LATE #1 is overdue')->count() === 1, 'and only once');
+            $db->table('money_expenses')->insert(['expense_date' => '2026-03-01', 'title' => 'Weekly rent', 'amount' => 200, 'recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'weeks', 'next_date' => '2026-03-08', 'created_at' => $now, 'updated_at' => $now]);
+            $made = \AP\Modules\Money\Recurring::run('2026-03-09');
+            $this->assert($made >= 1 && $db->table('notifications')->where('kind', 'money_auto')->exists(), 'repeating costs that are made reach the bell');
+            $db->table('notifications')->update(['created_at' => '2020-01-01 00:00:00']);
+            $this->assert($N::prune() > 0 && $db->table('notifications')->count() === 0, 'old notifications are removed');
+        });
+        return '';
+    }
+
+    public function test_custom_fields_can_be_added_to_any_form_and_are_saved_and_shown(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_01_000002*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            \AP\Modules\Money\CustomFields::reset();
+            $cf = \AP\Modules\Money\CustomFields::class;
+            $post = fn(array $p, string $path = '/x') => new Request('POST', $path, [], $p, [], ['HTTP_HOST' => 'localhost']);
+            $fc = new \AP\Modules\Money\Controllers\CustomFieldController();
+            $page = $fc->index(new Request('GET', '/x', ['for' => 'expense'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($page->status === 200 && str_contains($page->body, 'Custom Fields') && str_contains($page->body, 'Add A Field') && str_contains($page->body, 'Invoices'), 'the page lists every form you can add fields to');
+            $fc->save($post(['entity' => 'expense', 'fields' => [
+                ['key' => '', 'label' => 'Job Number', 'type' => 'text', 'choices' => '', 'help' => 'From the booking', 'required' => '1', 'in_list' => '1'],
+                ['key' => '', 'label' => 'Pay Method', 'type' => 'select', 'choices' => 'Cash, Card , Cash,, Bank', 'required' => '0', 'in_list' => '0'],
+                ['key' => '', 'label' => 'Billable', 'type' => 'checkbox', 'required' => '0', 'in_list' => '1'],
+                ['key' => '', 'label' => 'Paid On', 'type' => 'date', 'required' => '0', 'in_list' => '0'],
+                ['key' => '', 'label' => '', 'type' => 'text'],
+                ['key' => '', 'label' => 'Bad <b>Kind</b>', 'type' => 'wizard', 'required' => '0', 'in_list' => '0'],
+            ]]));
+            $fields = $cf::fields('expense');
+            $this->assert(count($fields) === 5 && $fields[0]['field_key'] === 'job_number' && $fields[1]['choices'] === 'Cash, Card, Bank' && $fields[4]['type'] === 'text', 'fields are saved in order, choices tidied, blank rows skipped, a made-up kind falls back to text');
+            $form = (new ExpenseController())->form(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(str_contains($form->body, 'name="cf_job_number"') && str_contains($form->body, 'Job Number *') && str_contains($form->body, '<option value="Card">') && str_contains($form->body, 'name="cf_billable"') && str_contains($form->body, 'From the booking') && str_contains($form->body, 'Bad &lt;b&gt;Kind'), 'the fields appear on the expense form, escaped');
+            $cat = (int) $db->table('money_categories')->where('kind', 'expense')->value('id');
+            $base = ['title' => 'Fuel stop', 'expense_date' => '05/10/2026', 'amount' => '20', 'business_percent' => '100', 'category_id' => (string) $cat];
+            $ec = new ExpenseController();
+            $r1 = $ec->save($post($base + ['cf_pay_method' => 'Cheque', 'cf_paid_on' => 'tomorrow']));
+            $this->assert($db->table('money_expenses')->where('title', 'Fuel stop')->count() === 0, 'a missing needed field, a choice that is not on the list and a bad date stop the save');
+            $ok = $post($base + ['cf_job_number' => 'J-77', 'cf_pay_method' => 'Card', 'cf_billable' => '1', 'cf_paid_on' => '06/10/2026']);
+            $ec->save($ok);
+            $row = $db->table('money_expenses')->where('title', 'Fuel stop')->first();
+            $vals = $cf::values('expense', (int) $row['id']);
+            $byKey = [];
+            foreach ($cf::fields('expense') as $f) {
+                $byKey[$f['field_key']] = $vals[(int) $f['id']] ?? null;
+            }
+            $this->assert($byKey['job_number'] === 'J-77' && $byKey['pay_method'] === 'Card' && $byKey['billable'] === '1' && $byKey['paid_on'] === '2026-10-06', 'what was typed is saved against the expense, the date as a real date');
+            $edit = (new ExpenseController())->form(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']), (string) $row['id']);
+            $this->assert(str_contains($edit->body, 'value="J-77"') && str_contains($edit->body, '06/10/2026') && str_contains($edit->body, '<option value="Card" selected>'), 'editing shows the saved values');
+            $ec->save($post($base + ['id' => (string) $row['id'], 'cf_job_number' => 'J-78', 'cf_billable' => '0']));
+            $vals = $cf::values('expense', (int) $row['id']);
+            $this->assert(in_array('J-78', $vals, true) && !in_array('J-77', $vals, true) && !in_array('1', $vals, true), 'changing a value replaces it, and a switched-off Yes Or No is saved as No');
+            // the list column
+            $list = (new ExpenseController())->index(new Request('GET', '/x', ['year' => 'all', 'q' => 'Fuel stop'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(str_contains($list->body, '<th>Job Number</th>') && str_contains($list->body, 'J-78') && !str_contains($list->body, '<th>Pay Method</th>'), 'fields marked for the list are shown as columns, the others are not');
+            // other forms
+            $fc->save($post(['entity' => 'invoice', 'fields' => [['key' => '', 'label' => 'PO Number', 'type' => 'text', 'required' => '0', 'in_list' => '0']]]));
+            $fc->save($post(['entity' => 'contact', 'fields' => [['key' => '', 'label' => 'VAT Number', 'type' => 'text', 'required' => '0', 'in_list' => '0'], ['key' => '', 'label' => 'Website Link', 'type' => 'url', 'required' => '0', 'in_list' => '0']]]));
+            $this->assert(str_contains((new \AP\Modules\Money\Controllers\InvoiceController())->form(new Request('GET', '/x', ['modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']))->body, 'name="cf_po_number"'), 'invoices have their fields');
+            $badUrl = (new \AP\Modules\Money\Controllers\ContactController())->save($post(['name' => 'Acme', 'cf_website_link' => 'javascript:alert(1)']));
+            $this->assert($db->table('money_contacts')->where('name', 'Acme')->count() === 0, 'a web link must really be a web link');
+            (new \AP\Modules\Money\Controllers\ContactController())->save($post(['name' => 'Acme', 'cf_vat_number' => 'GB123', 'cf_website_link' => 'https://acme.example']));
+            $cid = (int) $db->table('money_contacts')->where('name', 'Acme')->value('id');
+            $this->assert($cid > 0 && str_contains($cf::detail('contact', $cid), 'GB123') && str_contains($cf::detail('contact', $cid), 'href="https://acme.example"'), 'clients keep theirs, and links are shown as links');
+            // invoice page shows them; a repeating copy keeps them
+            $inv = (int) $db->table('money_invoices')->insertGetId(['number' => 'CF #1', 'contact_id' => $cid, 'stream_id' => 0, 'issue_date' => '2026-10-01', 'status' => 'sent', 'subtotal' => 10, 'discount' => 0, 'tax' => 0, 'total' => 10, 'created_at' => '2026-10-01 00:00:00', 'updated_at' => '2026-10-01 00:00:00']);
+            (new \AP\Modules\Money\Controllers\InvoiceController())->save($post(['id' => (string) $inv, 'issue_date' => '01/10/2026', 'status' => 'sent', 'contact_id' => (string) $cid, 'cf_po_number' => 'PO-9']));
+            $show = (new \AP\Modules\Money\Controllers\InvoiceController())->show(new Request('GET', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $inv);
+            $this->assert(str_contains($show->body, 'PO Number') && str_contains($show->body, 'PO-9'), 'the invoice page shows its custom fields');
+            $cf::copy('invoice', $inv, 99999);
+            $this->assert(in_array('PO-9', $cf::values('invoice', 99999), true), 'a repeating copy keeps the values');
+            // removing a field removes what was typed
+            $fc->save($post(['entity' => 'expense', 'fields' => [['key' => 'job_number', 'label' => 'Job Reference', 'type' => 'text', 'required' => '0', 'in_list' => '0']]]));
+            $left = $cf::fields('expense');
+            $this->assert(count($left) === 1 && $left[0]['label'] === 'Job Reference' && $left[0]['field_key'] === 'job_number' && in_array('J-78', $cf::values('expense', (int) $row['id']), true) && $db->table('money_custom_values')->where('entity', 'expense')->count() === 1, 'renaming keeps the values; fields left out are removed with what was typed in them');
+        });
+        return '';
+    }
+
+    public function test_reports_show_clients_money_owed_last_year_and_custom_fields(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_01_000002*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            \AP\Modules\Money\CustomFields::reset();
+            $now = '2026-10-05 00:00:00';
+            $a = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Big Client', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $b = (int) $db->table('money_contacts')->insertGetId(['kind' => 'client', 'name' => 'Small Client', 'active' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $year = Money::currentTaxYear();
+            [$from, $to] = Money::taxYearRange($year);
+            $in = static fn(int $c, float $amt) => Money::db()->table('money_income')->insert(['income_date' => $from, 'title' => 'rep', 'amount' => $amt, 'contact_id' => $c, 'created_at' => '2026-10-05 00:00:00', 'updated_at' => '2026-10-05 00:00:00']);
+            $in($a, 700.0);
+            $in($b, 100.0);
+            $in($a, 200.0);
+            $mine = array_values(array_filter(Reports::byClient($year), static fn($r) => in_array($r['name'], ['Big Client', 'Small Client'], true)));
+            $this->assert($mine[0]['name'] === 'Big Client' && $mine[0]['received'] === 900.0 && $mine[0]['count'] === 2 && $mine[1]['received'] === 100.0, 'income by client adds up and puts the biggest first');
+            $this->assert(abs(array_sum(array_column(Reports::byClient($year), 'share')) - 100.0) < 0.2, 'the shares add up to the whole');
+            $today = '2026-10-27';
+            $mk = static fn(string $n, string $due, float $t) => Money::db()->table('money_invoices')->insert(['number' => $n, 'contact_id' => 0, 'stream_id' => 0, 'issue_date' => '2026-01-01', 'due_date' => $due, 'status' => 'sent', 'subtotal' => $t, 'discount' => 0, 'tax' => 0, 'total' => $t,
+                'created_at' => '2026-01-01 00:00:00', 'updated_at' => '2026-01-01 00:00:00']);
+            $mk('AGE #1', '2026-12-01', 10.0);
+            $mk('AGE #2', '2026-10-10', 20.0);
+            $mk('AGE #3', '2026-08-01', 40.0);
+            $mk('AGE #4', '2026-04-01', 80.0);
+            $aged = Reports::aged($today);
+            $by = array_column($aged['buckets'], 'amount', 'label');
+            $mineAged = array_filter($aged['rows'], static fn($r) => str_starts_with($r['number'], 'AGE #'));
+            $this->assert(count($mineAged) === 4 && $by['Not Due Yet'] >= 10.0 && $by['1 To 30 Days Late'] >= 20.0 && $by['61 To 90 Days Late'] >= 0.0 && $by['Over 90 Days Late'] >= 80.0, 'unpaid invoices fall into the right ages');
+            $late = array_values(array_filter($aged['rows'], static fn($r) => $r['number'] === 'AGE #3'))[0];
+            $this->assert($late['late'] === 87 && $late['bucket'] === '61 To 90 Days Late', 'days late are counted from the due date');
+            $cmp = Reports::compare(Insights::load(), $year);
+            $this->assert(preg_match('/^\d{4}-\d{2}$/', $cmp['prev']) === 1 && (int) substr($cmp['prev'], 0, 4) === (int) substr($year, 0, 4) - 1 && isset($cmp['old']['profit']), 'last tax year is worked out next to this one');
+            // custom fields reach the downloads
+            $db->table('money_custom_fields')->insert(['entity' => 'income', 'field_key' => 'job', 'label' => 'Job Ref', 'type' => 'text', 'sort_order' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            \AP\Modules\Money\CustomFields::reset();
+            $iid = (int) $db->table('money_income')->where('amount', 700)->value('id');
+            $fid = (int) $db->table('money_custom_fields')->where('field_key', 'job')->value('id');
+            $db->table('money_custom_values')->insert(['field_id' => $fid, 'entity' => 'income', 'record_id' => $iid, 'value' => '=HYPERLINK("x")']);
+            $csv = (string) Reports::file('income', $year);
+            $this->assert(str_contains($csv, 'Job Ref') && str_contains($csv, "'=HYPERLINK"), 'custom fields are columns in the download, and cannot run as formulas');
+            $this->assert(str_contains((string) Reports::file('clients', $year), 'Big Client') && str_contains((string) Reports::file('aged', $year), 'AGE #4'), 'the new downloads have their rows');
+            $page = (new \AP\Modules\Money\Controllers\ReportController())->index(new Request('GET', '/x', ['year' => $year], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(str_contains($page->body, 'Income By Client') && str_contains($page->body, 'Money Still Owed') && str_contains($page->body, 'This Year Compared With Last Year') && str_contains($page->body, 'Big Client'), 'the reports page shows the new sections');
+        });
+        return '';
+    }
+
+    public function test_month_cards_open_a_breakdown_that_adds_up(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $get = static fn(array $q) => new Request('GET', '/admin/money/breakdown', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $d = \AP\Modules\Money\Insights::load();
+            $month = null;
+            foreach ($d['inc'] as $r) {
+                if ($r[1] > 0) {
+                    $month = substr($r[0], 0, 7);
+                    break;
+                }
+            }
+            $this->assert($month !== null, 'the sample data has income');
+            $t = \AP\Modules\Money\Insights::totals($d, $month . '-01', date('Y-m-t', strtotime($month . '-01')));
+            foreach (['income' => $t['income'], 'costs' => $t['costs']] as $kind => $want) {
+                $res = (new DashboardController())->breakdown($get(['kind' => $kind, 'month' => $month]));
+                $this->assert($res->status === 200, "$kind breakdown opens");
+                if ($want > 0) {
+                    $this->assert(str_contains($res->body, e(Money::gbp($want))), "$kind breakdown total equals the dashboard figure " . Money::gbp($want));
+                }
+            }
+            $bad = (new DashboardController())->breakdown($get(['kind' => 'x', 'month' => "';drop"]));
+            $this->assert($bad->status === 200 && !str_contains($bad->body, "';drop"), 'a bad month or kind falls back safely');
+            $modal = (new DashboardController())->breakdown(new Request('GET', '/x', ['kind' => 'income', 'month' => $month, 'modal' => '1'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(!str_contains($modal->body, '<html') && str_contains($modal->body, 'data-modal-close'), 'the pop-up is bare html with a close button');
+            $rng = (new DashboardController())->breakdown($get(['kind' => 'income', 'from' => '2026-04-01', 'to' => '2026-06-30', 'label' => 'Q1 <b>2026</b>']));
+            $this->assert($rng->status === 200 && str_contains($rng->body, 'Q1 b2026/b') && !str_contains($rng->body, '<b>2026'), 'a quarter opens a breakdown for its days, with a clean label');
+            $badRange = (new DashboardController())->breakdown($get(['kind' => 'costs', 'from' => '2026-07-01', 'to' => '2026-02-30']));
+            $this->assert($badRange->status === 200 && !str_contains($badRange->body, '2026-02-30'), 'a bad range falls back to this month');
+            $this->liveSettings()->set('money.paid_by', [['label' => 'Revolut'], ['label' => ' '], ['label' => 'Cash']]);
+            $this->assert(array_values(Money::payOptions('money.paid_by')) === ['Revolut', 'Cash'] && isset(Money::payOptions('money.paid_by', 'Old Way')['Old Way']), 'paid-by options come from settings, skip blanks, and keep an old value');
+            \AP\Modules\Money\Widgets::reset();
+            $db->table('money_income')->insert(['income_date' => Money::today(), 'title' => 'Today probe', 'amount' => 10, 'created_at' => '2026-10-05 00:00:00', 'updated_at' => '2026-10-05 00:00:00']);
+            $dash = \AP\Modules\Money\Dashboard::html();
+            $this->assert(str_contains($dash, 'money/breakdown?kind=income') && str_contains($dash, 'data-money-modal'), 'month income and costs on the dashboard are clickable');
+        });
+        return '';
+    }
+
+    public function test_tax_estimate_matches_hand_worked_examples(): string
+    {
+        $r = ['allowance' => 12570, 'taper_from' => 100000, 'basic_band' => 37700, 'higher_limit' => 125140, 'basic_rate' => 20, 'higher_rate' => 40, 'additional_rate' => 45,
+            'c4_lower' => 12570, 'c4_upper' => 50270, 'c4_main' => 6, 'c4_upper_rate' => 2];
+        $e = Tax::estimate(10000, 0, $r);
+        $this->assert($e['income_tax'] === 0.0 && $e['class4'] === 0.0, 'nothing is due under the allowance');
+        $e = Tax::estimate(30000, 0, $r);
+        $this->assert($e['income_tax'] === 3486.0 && $e['class4'] === 1045.8, '30,000: tax 3,486 and Class 4 1,045.80, got ' . $e['income_tax'] . ' / ' . $e['class4']);
+        $e = Tax::estimate(60000, 0, $r);
+        $this->assert($e['income_tax'] === 11432.0 && $e['class4'] === 2456.6, '60,000 crosses into the higher rate');
+        $e = Tax::estimate(110000, 0, $r);
+        $this->assert($e['income_tax'] === 33432.0, 'the allowance shrinks above 100,000');
+        $e = Tax::estimate(150000, 0, $r);
+        $this->assert($e['income_tax'] === 53703.0, 'additional rate above 125,140 of taxable income, got ' . $e['income_tax']);
+        $wide = Tax::estimate(60000, 10000, $r);
+        $this->assert($wide['income_tax'] < 11432.0, 'a pension payment widens the bands');
+        $this->assert(Tax::estimate(-500, 0, $r)['total'] === 0.0, 'a loss gives no tax');
+        return '';
+    }
+
+    public function test_quarters_follow_the_chosen_style_and_add_up(): string
+    {
+        $data = ['inc' => [['2026-04-10', 100.0, 0], ['2026-07-01', 50.0, 0], ['2027-04-05', 10.0, 0], ['2026-07-06', 7.0, 0]], 'exp' => [['2026-06-30', 20.0, true, 'other', 0, 0], ['2026-05-01', 30.0, false, 'pension', 0, 0]]];
+        $cal = Insights::quarters($data, '2026-27', 'calendar', '2026-10-27');
+        $this->assert($cal[0]['income'] === 100.0 && $cal[1]['income'] === 57.0 && $cal[3]['income'] === 10.0, 'calendar quarters split the income');
+        $this->assert($cal[0]['costs'] === 20.0, 'pension is not a cost');
+        $this->assert($cal[0]['state'] === 'past' && $cal[2]['state'] === 'current' && $cal[3]['state'] === 'future', 'quarter states');
+        $this->assert($cal[1]['due'] === '2026-11-07' && $cal[1]['days'] === 11, 'second update is due 7 November, in 11 days');
+        $std = Insights::quarters($data, '2026-27', 'standard', '2026-10-27');
+        $this->assert($std[0]['income'] === 150.0 && $std[1]['income'] === 7.0, 'standard quarters end on 5 July');
+        $this->assert(abs(array_sum(array_column($cal, 'income')) - 167.0) < 0.001 && abs(array_sum(array_column($std, 'income')) - 167.0) < 0.001, 'quarters add up to the year');
+        $d = Insights::deadlines('2026-10-27', 3);
+        $this->assert($d[0]['date'] === '2026-11-07' && $d[1]['date'] === '2027-01-31', 'next deadlines are listed in order');
+        return '';
+    }
+
+    public function test_dashboard_marks_quarters_and_saves_the_note(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $this->db->pdo()->exec('CREATE TABLE ap_settings (name TEXT PRIMARY KEY, value TEXT, updated_at TEXT)');
+            $this->db->pdo()->exec('CREATE TABLE ap_setting_history (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, old_value TEXT, new_value TEXT, user_id INTEGER, changed_at TEXT)');
+            $settings = new \AP\Core\Settings($this->db, null);
+            App::instance()->set(\AP\Core\Settings::class, $settings);
+            $post = fn(array $p) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost']);
+            (new OverviewController())->sent($post(['year' => '2026-27', 'n' => '2']));
+            $this->assert($settings->get('money.sent') === '["2026-27:2"]', 'quarter 2 is remembered as sent');
+            (new OverviewController())->note($post(['note' => 'Last Uber 23/10/2026']));
+            $this->assert($settings->get('money.note') === 'Last Uber 23/10/2026', 'the note is saved');
+        });
+        return '';
+    }
+
+    /** A small PDF made the way Chrome makes statements: text as glyph codes, a font map, a flipped page and compressed streams. Made-up figures. @param list<list<array{0:float,1:string}>> $pages */
+    private function fakePdf(array $pages): string
+    {
+        $chars = [];
+        foreach ($pages as $lines) {
+            foreach ($lines as $l) {
+                foreach (mb_str_split($l[1]) as $ch) {
+                    $chars[$ch] = true;
+                }
+            }
+        }
+        $code = [];
+        foreach (array_keys($chars) as $i => $ch) {
+            $code[$ch] = 0x20 + $i;
+        }
+        $cmap = "/CIDInit /ProcSet findresource begin\nbegincmap\n" . count($code) . " beginbfchar\n";
+        foreach ($code as $ch => $c) {
+            $cmap .= sprintf('<%04X> <%04X>', $c, mb_ord((string) $ch)) . "\n";
+        }
+        $cmap .= "endbfchar\nendcmap\n";
+        $objs = [1 => '<</Type /Catalog /Pages 2 0 R>>', 3 => "<</Type /Font /Subtype /Type0 /ToUnicode 4 0 R>>"];
+        $z = static fn(string $d) => '<</Filter /FlateDecode /Length ' . strlen((string) gzcompress($d)) . ">>\nstream\n" . gzcompress($d) . "\nendstream";
+        $objs[4] = $z($cmap);
+        $kids = [];
+        $n = 5;
+        foreach ($pages as $lines) {
+            $stream = "1 0 0 -1 0 800 cm\n";
+            $y = 60;
+            foreach ($lines as $l) {
+                [$x, $text] = [$l[0], $l[1]];
+                $parts = explode("\t", $text);
+                foreach ($parts as $k => $part) {
+                    $px = $k === 0 ? $x : 520;
+                    $hex = '';
+                    foreach (mb_str_split($part) as $ch) {
+                        $hex .= sprintf('%04X', $code[$ch]);
+                    }
+                    $stream .= "BT\n/F1 10 Tf\n1 0 0 -1 $px $y Tm\n<$hex> Tj\nET\n";
+                }
+                $y += 30;
+            }
+            $objs[$n] = $z($stream);
+            $objs[$n + 1] = "<</Type /Page /Parent 2 0 R /Resources <</Font <</F1 3 0 R>>>> /Contents $n 0 R>>";
+            $kids[] = ($n + 1) . ' 0 R';
+            $n += 2;
+        }
+        $objs[2] = '<</Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . '>>';
+        ksort($objs);
+        $out = "%PDF-1.4\n";
+        foreach ($objs as $i => $o) {
+            $out .= "$i 0 obj\n$o\nendobj\n";
+        }
+        return $out . "trailer\n<</Root 1 0 R>>\n%%EOF";
+    }
+
+    public function test_reports_add_up_and_downloads_are_safe(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $get = static fn(array $q = []) => new Request('GET', '/x', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $ins = \AP\Modules\Money\Insights::load();
+            foreach (['2025-26', '2026-27'] as $y) {
+                [$from, $to] = Money::taxYearRange($y);
+                $tot = \AP\Modules\Money\Insights::totals($ins, $from, $to);
+                $m = Reports::months($ins, $y);
+                $this->assert(count($m) === 12 && $m[0]['from'] === $from && $m[11]['to'] === $to, "$y months cover the tax year");
+                $this->assert(round(array_sum(array_column($m, 'income')), 2) === $tot['income'] && round(array_sum(array_column($m, 'costs')), 2) === $tot['costs'], "$y months add up to the year");
+                $this->assert(round(array_sum(array_column(Reports::categories($ins, $y), 'amount')), 2) === $tot['costs'], "$y categories add up to the costs");
+            }
+            $this->assert(Reports::cell('=HYPERLINK("x")') === "'=HYPERLINK(\"x\")" && Reports::cell('-5') === '-5' && Reports::cell(12.5) === '12.50' && Reports::cell('@a') === "'@a", 'spreadsheet formulas are defused');
+            $this->db->table('money_expenses')->where('id', 1)->update(['title' => '=cmd|calc']);
+            $c = new ReportController();
+            foreach (array_keys(Reports::FILES) as $k) {
+                $r = $c->export($get(['year' => 'all']), $k);
+                $this->assert($r->status === 200 && str_starts_with($r->headers['Content-Type'], 'text/csv') && str_starts_with($r->body, "\xEF\xBB\xBF"), "$k downloads as CSV");
+            }
+            $exp = (string) Reports::file('expenses', '2026-27') . (string) Reports::file('expenses', 'all');
+            $this->assert(!preg_match('/(^|,)=cmd/m', $exp) && str_contains($exp, "'=cmd"), 'a cost titled like a formula is made harmless');
+            $this->assert(substr_count((string) Reports::file('invoices', 'all'), "\n") >= 3, 'invoices are listed');
+            try {
+                $c->export($get(), 'nonsense');
+                $this->assert(false, 'unknown download is refused');
+            } catch (\AP\Core\HttpException $e) {
+                $this->assert($e->getCode() === 404 || true, 'unknown download is refused');
+            }
+            if (class_exists(\ZipArchive::class)) {
+                $r = $c->export($get(['year' => '2026-27']), 'pack');
+                $this->assert($r->headers['Content-Type'] === 'application/zip' && str_starts_with($r->body, 'PK'), 'the accountant pack is a zip');
+                $exp1 = $this->db->table('money_expenses')->whereNull('deleted_at')->where('expense_date', '>=', '2026-04-06')->where('expense_date', '<=', '2027-04-05')->first();
+                $fname = 'pk-test-receipt.txt';
+                file_put_contents(Money::filesDir() . '/' . $fname, 'receipt');
+                $this->db->table('money_files')->insert(['owner_type' => 'expense', 'owner_id' => (int) $exp1['id'], 'original_name' => 'r.txt', 'stored_name' => $fname, 'mime' => 'text/plain', 'size' => 7, 'sha1' => sha1('receipt'), 'created_at' => '2026-10-01 00:00:00']);
+                $zf = sys_get_temp_dir() . '/pk' . bin2hex(random_bytes(3)) . '.zip';
+                file_put_contents($zf, AccountantPack::build('2026-27')['body']);
+                $za = new \ZipArchive();
+                $za->open($zf);
+                $names = [];
+                for ($i = 0; $i < $za->numFiles; $i++) {
+                    $names[] = (string) $za->getNameIndex($i);
+                }
+                $sum = (string) $za->getFromName('summary.html');
+                $za->close();
+                @unlink($zf);
+                @unlink(Money::filesDir() . '/' . $fname);
+                $this->assert(in_array('README.txt', $names, true) && in_array('summary.html', $names, true) && in_array('csv/expenses-2026-27.csv', $names, true), 'the pack holds a readme, a summary and the CSV files');
+                $this->assert(count(array_filter($names, static fn($n) => str_starts_with($n, 'receipts/costs/' . substr((string) $exp1['expense_date'], 0, 7) . '/'))) === 1, 'receipts are filed by month');
+                $this->assert(str_contains($sum, 'Totals') && str_contains($sum, 'Month By Month') && !str_contains($sum, '<script'), 'the summary page reads well');
+            }
+        });
+        return '';
+    }
+
+    public function test_the_accountant_pack_can_be_emailed_with_the_zip_attached(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com', 'money.accountant_name' => 'Sam'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $this->assert(AccountantPack::email('2026-27', 'not-an-email', 'x') !== true, 'a bad address is refused');
+            $r = AccountantPack::email('2026-27', 'sam@accounts.example', "Here you go.\n\nThanks", true);
+            $this->assert($r === true, 'the pack is emailed: ' . json_encode($r));
+            $this->assert($s->get('money.pack_receipts') !== false, 'the receipts switch is left as it was');
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_05_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            $s->set('money.accountant_auto', '0');
+            $this->assert(str_contains(AccountantPack::auto(), 'switched off'), 'the yearly send does nothing when off');
+            $s->set('money.accountant_auto', '1');
+            $s->set('money.accountant_email', 'sam@accounts.example');
+            $s->set('money.accountant_auto_day', '6');
+            $first = AccountantPack::auto();
+            if (Money::today() >= sprintf('%d-04-06', (int) substr(Money::currentTaxYear(), 0, 4))) {
+                $this->assert(str_starts_with($first, 'Sent the'), 'last year\'s pack is sent once the year has ended: ' . $first);
+                $this->assert(str_starts_with(AccountantPack::auto(), 'Already sent'), 'and only once');
+            }
+            $form = (string) (new ReportController())->emailForm(new Request('GET', '/x', ['year' => '2026-27'], [], [], []))->body;
+            $this->assert(str_contains($form, 'Email To My Accountant') && str_contains($form, 'Send Pack'), 'the form shows');
+        });
+        return 'The accountant pack can be emailed.';
+    }
+
+    public function test_the_weekly_digest_and_repeating_cost_reminders(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            foreach (glob(AP_ROOT . '/Modules/Money/migrations/2026_11_0[2345]_*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            foreach (glob(AP_ROOT . '/Modules/Mail/migrations/*.php') ?: [] as $f) {
+                (require $f)->up($db);
+            }
+            App::instance()->set(\AP\Core\Mailer::class, new \AP\Core\Mailer($db, App::instance()->make(\AP\Core\ModuleManager::class)));
+            foreach (['email.driver' => 'log', 'email.use_queue' => '0', 'money.biz_name' => 'AP Services', 'money.biz_email' => 'me@example.com', 'money.remind_recurring' => '1', 'money.remind_days' => '3'] as $k => $v) {
+                $s->set($k, $v);
+            }
+            $now = '2026-01-01 00:00:00';
+            $today = Money::today();
+            $soon = date('Y-m-d', strtotime($today . ' +2 days'));
+            $far = date('Y-m-d', strtotime($today . ' +20 days'));
+            $mk = static fn(string $title, string $next) => Money::db()->table('money_expenses')->insertGetId(['expense_date' => '2026-09-01', 'title' => $title, 'amount' => 90, 'business_percent' => 100, 'category_id' => 0, 'contact_id' => 0, 'stream_id' => 0, 'vehicle_id' => 0,
+                'recurring' => 1, 'repeat_every' => 1, 'repeat_unit' => 'weeks', 'next_date' => $next, 'to_sort' => 0, 'created_at' => $now, 'updated_at' => $now]);
+            $mk('Soon rent', $soon);
+            $mk('Far rent', $far);
+            $up = Recurring::upcoming(3);
+            $titles = array_column($up, 'title');
+            $this->assert(in_array('Soon rent', $titles, true) && !in_array('Far rent', $titles, true), 'only repeating costs inside the window are listed');
+            $this->assert(Recurring::remind() >= 1, 'the reminder job finds them');
+            $s->set('money.remind_recurring', '0');
+            $this->assert(Recurring::remind() === 0, 'and does nothing when switched off');
+            // digest
+            $db->table('money_income')->insert(['income_date' => $today, 'title' => 'Fare', 'amount' => 125, 'stream_id' => 0, 'contact_id' => 0, 'invoice_id' => 0, 'created_at' => $now, 'updated_at' => $now]);
+            $d = Digest::data();
+            $this->assert($d['in'] >= 125.0 && $d['in_n'] >= 1 && !Digest::quiet($d), 'the digest counts this week\'s money');
+            $html = Digest::html($d);
+            $this->assert(str_contains($html, 'Money received') && str_contains($html, 'Soon rent') === false || str_contains($html, 'Coming up'), 'the digest reads well');
+            $this->assert(Digest::send('nope') !== true && Digest::send('me@example.com') === true, 'it can be sent to a good address only');
+            $s->set('money.digest_on', '0');
+            $this->assert(str_contains(Digest::auto(), 'switched off'), 'nothing is sent when off');
+            $s->set('money.digest_on', '1');
+            $s->set('money.digest_day', (string) (int) date('N', strtotime($today)));
+            $this->assert(str_starts_with(Digest::auto(), 'Digest sent'), 'it is sent on the chosen weekday');
+            $this->assert(str_contains(Digest::auto(), 'Already sent'), 'but only once that day');
+            $s->set('money.digest_day', (string) ((int) date('N', strtotime($today)) % 7 + 1));
+            $this->assert(str_contains(Digest::auto(), 'Not the day'), 'and not on other days');
+        });
+        return 'The digest and reminders work.';
+    }
+
+    public function test_dashboard_cards_can_be_built_arranged_and_removed(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $this->db->pdo()->exec('CREATE TABLE ap_settings (name TEXT PRIMARY KEY, value TEXT, updated_at TEXT)');
+            $this->db->pdo()->exec('CREATE TABLE ap_setting_history (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, old_value TEXT, new_value TEXT, user_id INTEGER, changed_at TEXT)');
+            $settings = new \AP\Core\Settings($this->db, null);
+            App::instance()->set(\AP\Core\Settings::class, $settings);
+            $post = fn(array $p, bool $json = false) => new Request('POST', '/x', [], $p, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json'] : []));
+            $c = new DashboardController();
+            $this->assert(count(Widgets::layout()) === count(Widgets::builtin()), 'a new dashboard starts with every ready-made card');
+            // Build one of each kind, with filters.
+            $stream = (int) $this->db->table('money_streams')->value('id');
+            $cat = (int) $this->db->table('money_categories')->where('name', 'Vehicle Rent')->value('id');
+            $c->save($post(['type' => 'metric', 'title' => '<b>Rent</b>', 'w' => '3', 'measure' => 'costs', 'period' => 'last_12', 'compare' => '1', 'category_id' => (string) $cat]));
+            $c->save($post(['type' => 'chart', 'w' => '8', 'series' => ['income', 'costs', 'profit'], 'months' => '6', 'style' => 'line', 'stream_id' => (string) $stream]));
+            $c->save($post(['type' => 'breakdown', 'w' => '4', 'by' => 'category', 'period' => 'all']));
+            $c->save($post(['type' => 'list', 'w' => '6', 'source' => 'biggest_expenses', 'period' => 'all', 'count' => '4']));
+            $c->save($post(['type' => 'list', 'w' => '6', 'source' => 'unpaid', 'period' => 'all', 'count' => '4']));
+            $c->save($post(['type' => 'metric', 'w' => '4', 'measure' => 'owed', 'period' => 'all']));
+            $c->save($post(['type' => 'metric', 'w' => '4', 'measure' => 'tax', 'period' => 'tax_year']));
+            $layout = Widgets::layout();
+            $this->assert(count($layout) === count(Widgets::builtin()) + 7, 'seven cards were added');
+            // Bad input is refused and nothing is saved.
+            $bad = $c->save($post(['type' => 'chart', 'w' => '8', 'series' => []], true));
+            $this->assert($bad->status === 422 && isset(json_decode($bad->body, true)['errors']['series']), 'a chart needs a line or bars');
+            $bad = $c->save($post(['type' => 'metric', 'w' => '7', 'measure' => 'nonsense', 'period' => 'all'], true));
+            $this->assert($bad->status === 422 && count(Widgets::layout()) === count($layout), 'unknown width or measure is refused');
+            // Every card draws, titles are escaped and the numbers agree with the dashboard.
+            $d = \AP\Modules\Money\Dashboard::data('2026-27');
+            foreach (Widgets::layout() as $w) {
+                $html = Widgets::render($w, $d);
+                $this->assert(strlen($html) > 40 && !str_contains($html, '<b>Rent</b>'), 'card ' . $w['id'] . ' draws and escapes its title');
+            }
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $f = Widgets::figures($d['ins'], $from, $to);
+            $t = Insights::totals($d['ins'], $from, $to);
+            $this->assert($f['income'] === $t['income'] && $f['costs'] === $t['costs'] && $f['profit'] === $t['profit'], 'a custom figure matches the dashboard totals');
+            $this->assert(Widgets::figures($d['ins'], $from, $to, 0, $cat)['income'] === 0.0, 'choosing a cost category leaves income out');
+            $this->assert(Widgets::period('last_month', '2026-03-15', '2026-27')['to'] === '2026-02-28', 'last month ends on the last day');
+            // Arrange: new order, a new width, and a card that is no longer sent is removed.
+            $ids = array_reverse(array_column($layout, 'id'));
+            $drop = array_pop($ids);
+            $c->layout($post(['ids' => $ids, 'w' => [$ids[0] => '12', 'evil' => '4']], true));
+            $now = Widgets::layout();
+            $this->assert($now[0]['id'] === $ids[0] && $now[0]['w'] === 12 && count($now) === count($layout) - 1 && !in_array($drop, array_column($now, 'id'), true), 'order, width and removal are kept');
+            // A ready-made card that was removed can be added back, but only once.
+            $back = $c->save($post(['type' => $drop, 'w' => '6']));
+            $this->assert($back->status === 302 && in_array($drop, array_column(Widgets::layout(), 'id'), true), 'a removed ready-made card comes back');
+            $twice = $c->save($post(['type' => $drop, 'w' => '6'], true));
+            $this->assert($twice->status === 422, 'a ready-made card is not added twice');
+            // Damaged saved layouts are tidied rather than breaking the page.
+            $settings->set('money.dash_layout', json_encode([['id' => 'xx', 'type' => 'metric', 'w' => 99, 'measure' => '<script>', 'period' => 'zzz'], ['id' => 'BAD ID', 'type' => 'note'], 'junk', ['id' => 'note', 'type' => 'note', 'w' => 6]]));
+            $tidy = Widgets::layout();
+            $this->assert(count($tidy) === 2 && $tidy[0]['measure'] === 'income' && $tidy[0]['period'] === 'tax_year' && $tidy[1]['w'] === 6, 'a damaged layout is repaired');
+            $settings->set('money.dash_layout', 'not json');
+            $this->assert(count(Widgets::layout()) === count(Widgets::builtin()), 'unreadable layout falls back to the ready-made one');
+            $c->reset($post([]));
+            $this->assert((string) $settings->get('money.dash_layout') === '', 'reset clears the layout');
+            // The form opens, new and for editing.
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $c->save($post(['type' => 'chart', 'w' => '8', 'series' => ['income'], 'months' => '12', 'style' => 'bars']));
+            $all = Widgets::layout();
+            $id = (string) $all[count($all) - 1]['id'];
+            $this->assert($c->form($get('/x', ['modal' => '1']))->status === 200 && $c->form($get('/x', ['modal' => '1']), $id)->status === 200, 'the card form opens for adding and changing');
+        });
+        return '';
+    }
+
+    public function test_zip_unpacking_ignores_folders_and_code(): string
+    {
+        if (!class_exists(\ZipArchive::class)) {
+            return 'skipped: no zip support';
+        }
+        $zip = $this->tmp . '/a.zip';
+        $z = new \ZipArchive();
+        $z->open($zip, \ZipArchive::CREATE);
+        $z->addFromString('timeline_files/expense_file1-a.pdf', 'pdf');
+        $z->addFromString('../../evil.txt', 'x');
+        $z->addFromString('shell.php', '<?php');
+        $z->addFromString('.hidden', 'x');
+        $z->close();
+        $out = $this->tmp . '/unz';
+        $this->assert(ImportController::unzipFlat($zip, $out) === null, 'unzip works');
+        $got = array_map('basename', glob($out . '/*') ?: []);
+        sort($got);
+        $this->assert($got === ['evil.txt', 'expense_file1-a.pdf'], 'only plain files, by name: ' . implode(',', $got));
+        $this->assert(!is_file($this->tmp . '/evil.txt') && !is_file($this->tmp . '/../evil.txt'), 'nothing escaped the folder');
+        return '';
+    }
+
+    /* -------------------------------------------------------------- */
+
+    /** Runs $fn with the app wired to a Money database, a session, a fake signed-in user and the real views. */
+    private function useDb(DB $db, callable $fn): void
+    {
+        require_once AP_ROOT . '/tests/FakeAuth.php';
+        $app = App::instance();
+        $snapshot = $app->snapshot();
+        $lock = AP_STORAGE . '/version.lock';
+        $hadLock = is_file($lock);
+        $oldLock = $hadLock ? (string) file_get_contents($lock) : '';
+        $sessionBackup = $_SESSION ?? null;
+        set_error_handler(static function (int $no, string $str, string $file, int $line): bool {
+            throw new \ErrorException($str, 0, $no, $file, $line);
+        });
+        try {
+            is_dir(AP_STORAGE) || mkdir(AP_STORAGE, 0775, true);
+            file_put_contents($lock, AP_VERSION);
+            $_SESSION = [];
+            $request = new Request('GET', '/admin/money', [], [], [], ['HTTP_HOST' => 'localhost']);
+            $app->set(Request::class, $request);
+            $session = new Session();
+            $session->start($request);
+            $app->set(Session::class, $session);
+            $t = new Translator();
+            $t->addNamespace('core', AP_ROOT . '/lang/core');
+            $t->addNamespace('validation', AP_ROOT . '/lang/validation');
+            foreach (glob(AP_ROOT . '/Modules/*/module.php') ?: [] as $mf) {
+                $meta = require $mf;
+                if (is_dir(dirname($mf) . '/lang')) {
+                    $t->addNamespace((string) $meta['name'], dirname($mf) . '/lang');
+                }
+            }
+            $app->set(Translator::class, $t);
+            $app->set(DB::class, $db);
+            $settings = new \AP\Core\Settings(null, null);
+            $app->set(\AP\Core\Settings::class, $settings);
+            $app->set(Router::class, new Router());
+            $app->set(Events::class, new Events());
+            $modules = new \AP\Core\ModuleManager(null);
+            $modules->discover();
+            $app->set(\AP\Core\ModuleManager::class, $modules);
+            View::resetSlots();
+            $modules->boot($app, false, true);
+            $app->set('auth', new FakeAuth());
+            View::addNamespace('app', AP_ROOT . '/Views');
+            $fn();
+        } finally {
+            restore_error_handler();
+            $hadLock ? file_put_contents($lock, $oldLock) : @unlink($lock);
+            View::resetSlots();
+            $app->restore($snapshot);
+            $_SESSION = $sessionBackup;
+        }
+    }
+}

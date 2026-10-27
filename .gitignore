@@ -1,0 +1,14 @@
+# Your site's own files: never stored in Git, never overwritten by a deploy.
+/application/config/local.php
+/application/storage/*
+!/application/storage/.htaccess
+!/application/storage/cache/
+!/application/storage/logs/
+/application/storage/cache/*
+!/application/storage/cache/.gitkeep
+/application/storage/logs/*
+!/application/storage/logs/.gitkeep
+/assets/uploads/
+/assets/vendor/
+.DS_Store
+Thumbs.db
