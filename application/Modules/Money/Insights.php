@@ -17,15 +17,16 @@ final class Insights
             $cats[(int) $c['id']] = [(string) $c['hmrc_box'], (int) $c['allowable'] === 1 && !in_array((string) $c['hmrc_box'], Money::NOT_COSTS, true), (int) ($c['with_mileage'] ?? 0) === 1];
         }
         $inc = [];
-        foreach ($db->table('money_income')->whereNull('deleted_at')->select('income_date', 'amount', 'stream_id')->get() as $r) {
-            $inc[] = [(string) $r['income_date'], (float) $r['amount'], (int) $r['stream_id']];
+        $vat = Vat::on();
+        foreach ($db->table('money_income')->whereNull('deleted_at')->select('income_date', 'amount', 'stream_id', 'invoice_id', 'vat_amount')->get() as $r) {
+            $inc[] = [(string) $r['income_date'], $vat ? Vat::incomeNet($r) : (float) $r['amount'], (int) $r['stream_id']];
         }
         $exp = [];
         $byMileage = Mileage::mileageVehicleIds();
         $flat = HomeUse::flat();
-        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('expense_date', 'category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id')->get() as $r) {
+        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('expense_date', 'category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount')->get() as $r) {
             $cat = $cats[(int) $r['category_id']] ?? ['other', true, false];
-            $mine = round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
+            $mine = $vat ? Vat::expenseNet($r, $cat[0]) : round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
             if ($byMileage && in_array((int) $r['vehicle_id'], $byMileage, true) && !$cat[2]) {
                 $exp[] = [(string) $r['expense_date'], $mine, false, 'mileage_covered', (int) $r['category_id'], (int) $r['stream_id']];
                 continue;

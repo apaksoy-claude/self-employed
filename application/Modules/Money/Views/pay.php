@@ -12,6 +12,7 @@ if ($logo === '') {
 }
 $title = (string) setting('money.pay_title', 'Pay Invoice');
 $canPay = $f['canPay'] && ($stripe || $paypal);
+$vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
 ?>
 <!doctype html>
 <html lang="en">
@@ -58,7 +59,8 @@ $canPay = $f['canPay'] && ($stripe || $paypal);
 
         <div class="pay-parties">
             <div><small>From</small><strong><?= e($biz['name']) ?></strong>
-                <?php foreach (['address', 'phone', 'email', 'website'] as $k): if ($biz[$k] !== ''): ?><span><?= nl2br(e($biz[$k])) ?></span><?php endif; endforeach; ?></div>
+                <?php foreach (['address', 'phone', 'email', 'website'] as $k): if ($biz[$k] !== ''): ?><span><?= nl2br(e($biz[$k])) ?></span><?php endif; endforeach; ?>
+                <?php if ($vatShow && \AP\Modules\Money\Vat::number() !== ''): ?><span>VAT number: <?= e(\AP\Modules\Money\Vat::number()) ?></span><?php endif; ?></div>
             <div><small>Billed to</small><strong><?= e((string) ($client['name'] ?? '')) ?: '—' ?></strong>
                 <?php if ($client): ?><span><?= e(implode(', ', array_filter([(string) $client['address'], (string) $client['city'], (string) $client['postcode']]))) ?></span><?php endif; ?></div>
         </div>
@@ -66,12 +68,14 @@ $canPay = $f['canPay'] && ($stripe || $paypal);
         <div class="pay-items" role="table" aria-label="Invoice items">
             <div class="pay-row is-head" role="row"><span role="columnheader">Item</span><span role="columnheader">Qty</span><span role="columnheader">Rate</span><span role="columnheader">Total</span></div>
             <?php foreach ($items as $it): ?>
-                <div class="pay-row" role="row"><span class="pay-item" role="cell"><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><em><?= nl2br(e((string) $it['description'])) ?></em><?php endif; ?></span>
+                <div class="pay-row" role="row"><span class="pay-item" role="cell"><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><em><?= nl2br(e((string) $it['description'])) ?></em><?php endif; ?><?php if ($vatShow && ($vl = \AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) !== ''): ?><em>VAT <?= e($vl) ?></em><?php endif; ?></span>
                     <span role="cell"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?><?= $it['unit'] ? ' ' . e((string) $it['unit']) : '' ?></span><span role="cell"><?= $g($it['rate']) ?></span><span role="cell"><?= $g($it['total']) ?></span></div>
             <?php endforeach; ?>
         </div>
         <dl class="pay-totals">
-            <?php if ((float) $inv['discount'] > 0): ?><div><dt>Subtotal</dt><dd><?= $g($inv['subtotal']) ?></dd></div><div><dt>Discount</dt><dd>-<?= $g($inv['discount']) ?></dd></div><?php endif; ?>
+            <?php if ((float) $inv['discount'] > 0 || $vatShow): ?><div><dt>Subtotal</dt><dd><?= $g($inv['subtotal']) ?></dd></div><?php endif; ?>
+            <?php if ((float) $inv['discount'] > 0): ?><div><dt>Discount</dt><dd>-<?= $g($inv['discount']) ?></dd></div><?php endif; ?>
+            <?php if ($vatShow): ?><div><dt>VAT</dt><dd><?= $g($inv['tax']) ?></dd></div><?php endif; ?>
             <div class="is-big"><dt>Total</dt><dd><?= $g($inv['total']) ?></dd></div>
             <?php foreach ($payments as $p): ?><div><dt>Paid <?= e(Money::showDate((string) $p['income_date'])) ?><?= $p['payment_method'] ? ' · ' . e((string) $p['payment_method']) : '' ?></dt><dd>-<?= $g($p['amount']) ?></dd></div><?php endforeach; ?>
             <?php if ($f['paid'] > 0 || $f['canPay']): ?><div class="is-big"><dt>Balance due</dt><dd><?= $g($f['balance']) ?></dd></div><?php endif; ?>

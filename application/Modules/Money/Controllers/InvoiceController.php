@@ -208,6 +208,9 @@ final class InvoiceController
             $old = $this->find($id);
             $data['status'] = $old['status'] === 'cancelled' ? 'cancelled' : $status;
             $db->table('money_invoices')->where('id', $id)->update($data);
+            if ((string) $old['issue_date'] !== (string) $issue) {
+                Money::recalcInvoice($id); // VAT follows the bill date (registration date, rates of the tax year).
+            }
         } else {
             $data += ['status' => $status, 'subtotal' => 0, 'discount' => 0, 'tax' => 0, 'total' => 0, 'created_at' => $data['updated_at']];
             $id = $db->table('money_invoices')->insertGetId($data);
@@ -358,6 +361,10 @@ final class InvoiceController
         }
         $data = ['title' => mb_substr($title, 0, 255), 'description' => trim($request->string('description')) ?: null, 'quantity' => $qty, 'unit' => mb_substr(trim($request->string('unit')), 0, 30) ?: null,
             'rate' => $rate, 'total' => round($qty * $rate, 2)];
+        if (\AP\Modules\Money\Vat::on()) {
+            $code = $request->string('vat_rate');
+            $data['vat_rate'] = isset(\AP\Modules\Money\Vat::CODES[$code]) ? $code : '';
+        }
         $itemId = $request->int('item_id');
         if ($itemId > 0) {
             $db->table('money_invoice_items')->where('id', $itemId)->where('invoice_id', (int) $id)->update($data);

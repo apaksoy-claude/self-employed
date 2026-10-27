@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.41.0 - VAT
+Update package: install from System > Updates, then press "Finish update" (adds VAT columns and a table for filed returns).
+- New page: Settings > VAT. Say you are registered, your VAT number (printed on invoices), the date you registered from (records before it have no VAT), your VAT periods (three quarter patterns or monthly), your scheme (standard or Flat Rate, with your flat rate, the limited cost trader rate and 1% off in the first year), cash accounting, and the starting VAT for new invoice lines and new expenses. Only the settings that apply are shown.
+- Invoices: each line has a VAT rate (standard, reduced, zero, exempt or outside the scope). The invoice works out the VAT, takes a discount's share off it, and shows the rate on each line, the VAT total and your VAT number on the invoice page, the PDF and the client's pay page. Changing the bill date works the VAT out again.
+- Expenses and payments with no invoice have a VAT rate and amount. Leave the amount empty and it is worked out from the total; type it when the receipt shows a different figure. Ticked expenses can have their VAT set together.
+- Profit now leaves VAT out everywhere: the dashboard, cards, tax estimate, reports and the accountant pack. On the Flat Rate Scheme takings count less your flat rate, and VAT on costs is not reclaimed except on equipment of £2,000 or more. Equipment is counted without VAT you reclaim.
+- New page: Money > VAT. Your VAT periods are a list on the left, marked Now, To File, Late or Filed. Each shows the nine boxes worked out from your records (by invoice date, or by money in and out with cash accounting), what you pay HMRC or HMRC owes you, the due date, every sale and cost behind the figures, a CSV download and a print view. Mark a return as filed in the background with the date and HMRC reference; a copy of the figures is kept, and the page points out any records changed after filing.
+- Not registered: Money > VAT watches your last 12 months' takings against the registration threshold, with a warning point you choose (80% to start), and explains when you must register.
+- The dashboard's Needs A Look card says when a VAT return is due or late, or when your takings are near the threshold.
+- Report downloads include VAT columns when you are registered.
+- Settings now have a date box type that opens the styled date picker.
+- Tests: Money 61, core 65.
+
 ## 1.40.0 - Equipment and capital allowances
 Update package: install from System > Updates, then press "Finish update" (adds the equipment table).
 - New page: Money > Equipment. A register of tools, computers, machinery, furniture, vans, motorcycles and cars bought to keep. Every expense filed to "Equipment and vehicles bought" appears there by itself and follows its expense, so nothing is claimed twice. You can also add things by hand, with the date, cost, business share, whether it was new, CO2 for cars, the vehicle it belongs to, and when it was sold and for how much.

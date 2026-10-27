@@ -18,7 +18,7 @@ $base = admin_url('money/expenses');
     <div class="ap-section"><div class="ap-section-body"><?= Ui::emptyState('No expenses match.', 'Change the filters, add an expense, or import a bank statement.', admin_url('money/expenses/new'), 'New Expense', 'fa-receipt') ?></div></div>
 <?php else: ?>
     <div class="small text-muted mb-2"><?= (int) $pager['total'] ?> expenses · total <strong><?= e(Money::gbp($totals['all'])) ?></strong> · business share <strong><?= e(Money::gbp($totals['mine'])) ?></strong></div>
-    <?php if ($canEdit): ?><?= Bulk::bar('bulk-expenses', admin_url('money/expenses/bulk'), [['op'=>'delete','label'=>'Delete','icon'=>'fa-trash','danger'=>true,'ask'=>'Delete the ticked expenses? Their receipts are kept.'],['op'=>'category','label'=>'Set Category','placeholder'=>'Set Category…','options'=>[0=>'No Category']+$cats],['op'=>'percent','label'=>'Set','input'=>'Business %']], 'expenses') ?><?php endif; ?>
+    <?php if ($canEdit): ?><?= Bulk::bar('bulk-expenses', admin_url('money/expenses/bulk'), [['op'=>'delete','label'=>'Delete','icon'=>'fa-trash','danger'=>true,'ask'=>'Delete the ticked expenses? Their receipts are kept.'],['op'=>'category','label'=>'Set Category','placeholder'=>'Set Category…','options'=>[0=>'No Category']+$cats],['op'=>'percent','label'=>'Set','input'=>'Business %']] + (\AP\Modules\Money\Vat::on() ? [3 => ['op'=>'vat','label'=>'Set VAT','placeholder'=>'Set VAT…','options'=>['none'=>'No VAT']+\AP\Modules\Money\Vat::options()]] : []), 'expenses') ?><?php endif; ?>
     <div class="ap-section"><div class="table-responsive"><table class="table mb-0 align-middle">
         <thead><tr>
             <?php if ($canEdit): ?><?= Bulk::head('bulk-expenses') ?><?php endif; ?>

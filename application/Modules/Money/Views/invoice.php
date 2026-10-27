@@ -11,6 +11,7 @@ $id = (int) $inv['id'];
 $balance = max(0.0, Money::invoiceBalance($inv, $paid));
 $modal = Money::modalAttr();
 $editable = $canEdit && $state !== 'cancelled';
+$vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
 ?>
 <?php $this->section('actions'); ?>
 <?php if ($canEdit): ?>
@@ -50,6 +51,7 @@ $editable = $canEdit && $state !== 'cancelled';
                 <?php if ($biz['logo'] !== ''): ?><img src="<?= e($biz['logo']) ?>" alt="<?= e($biz['name']) ?>" class="mn-logo"><?php endif; ?>
                 <strong><?= e($biz['name']) ?></strong>
                 <?php foreach (['address', 'phone', 'email', 'website'] as $f): if ($biz[$f] !== ''): ?><span><?= $f === 'phone' ? 'Phone: ' : ($f === 'email' ? 'Email: ' : ($f === 'website' ? 'Website: ' : '')) ?><?= nl2br(e($biz[$f])) ?></span><?php endif; endforeach; ?>
+                <?php if ($vatShow && \AP\Modules\Money\Vat::number() !== ''): ?><span>VAT number: <?= e(\AP\Modules\Money\Vat::number()) ?></span><?php endif; ?>
             </div>
             <div class="mn-inv-meta"><h1><?= e((string) $inv['number']) ?></h1>
                 <span>Bill date: <?= e(Money::showDate((string) $inv['issue_date'])) ?></span>
@@ -59,20 +61,20 @@ $editable = $canEdit && $state !== 'cancelled';
             <?php if ($client): ?><span><?= e(implode(', ', array_filter([(string) $client['address'], (string) $client['city'], (string) $client['postcode']]))) ?></span><?php endif; ?></div>
 
         <div class="table-responsive"><table class="table mn-items align-middle" id="items" data-order-url="<?= e(admin_url('money/invoices/' . $id . '/items/order')) ?>" data-token="<?= e(csrf_token()) ?>">
-            <thead><tr><th style="width:28px"></th><th>Item</th><th class="text-end">Quantity</th><th class="text-end">Rate</th><th class="text-end">Total</th><th class="mn-noprint" style="width:84px"></th></tr></thead><tbody>
+            <thead><tr><th style="width:28px"></th><th>Item</th><th class="text-end">Quantity</th><th class="text-end">Rate</th><?php if ($vatShow): ?><th class="text-end">VAT</th><?php endif; ?><th class="text-end">Total</th><th class="mn-noprint" style="width:84px"></th></tr></thead><tbody>
             <?php foreach ($items as $it): ?>
                 <tr data-id="<?= (int) $it['id'] ?>"<?= $editable ? ' draggable="true"' : '' ?>>
                     <td class="mn-handle mn-noprint"><?php if ($editable): ?><i class="fa-solid fa-grip-vertical" aria-hidden="true" title="Drag to reorder"></i><?php endif; ?></td>
                     <td><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><div class="small text-muted"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
                     <td class="text-end text-nowrap"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?> <?= e((string) $it['unit']) ?></td>
-                    <td class="text-end text-nowrap"><?= $g($it['rate']) ?></td><td class="text-end text-nowrap"><?= $g($it['total']) ?></td>
+                    <td class="text-end text-nowrap"><?= $g($it['rate']) ?></td><?php if ($vatShow): ?><td class="text-end text-nowrap"><?= e(\AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) ?></td><?php endif; ?><td class="text-end text-nowrap"><?= $g($it['total']) ?></td>
                     <td class="text-end mn-noprint text-nowrap"><?php if ($editable): ?>
                         <a class="mn-icon" href="<?= e(admin_url('money/invoices/' . $id . '/items/' . (int) $it['id'])) ?>" aria-label="Change item"><i class="fa-solid fa-pen"></i></a>
                         <form method="post" action="<?= e(admin_url('money/invoices/' . $id . '/items/' . (int) $it['id'] . '/delete')) ?>" class="d-inline"><?= csrf_field() ?><button class="mn-icon" type="submit" data-confirm="Remove this item?" aria-label="Remove item"><i class="fa-solid fa-xmark"></i></button></form>
                     <?php endif; ?></td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$items): ?><tr><td colspan="6" class="text-muted py-4">No items yet. Add what you charged for.</td></tr><?php endif; ?>
+            <?php if (!$items): ?><tr><td colspan="<?= $vatShow ? 7 : 6 ?>" class="text-muted py-4">No items yet. Add what you charged for.</td></tr><?php endif; ?>
             </tbody></table></div>
         <?php if ($editable): ?><a class="btn btn-outline-secondary mn-btn mn-noprint mt-3" href="<?= e(admin_url('money/invoices/' . $id . '/items/new')) ?>"><i class="fa-solid fa-circle-plus me-1"></i>Add Item</a><?php endif; ?>
 
@@ -82,6 +84,7 @@ $editable = $canEdit && $state !== 'cancelled';
                 <?php if ($editable): ?><a class="mn-icon mn-noprint" href="#discount" data-discount-open aria-label="Change discount"><i class="fa-solid fa-pen"></i></a><?php endif; ?></strong></div>
             <?php if ($editable): ?><form method="post" action="<?= e(admin_url('money/invoices/' . $id . '/discount')) ?>" class="mn-discount mn-noprint" id="discount" hidden><?= csrf_field() ?>
                 <input class="form-control" name="discount" value="<?= e(number_format((float) $inv['discount'], 2, '.', '')) ?>" inputmode="decimal" aria-label="Discount in pounds"><button class="btn btn-primary btn-sm mn-btn" type="submit">Save</button></form><?php endif; ?>
+            <?php if ($vatShow): ?><div><span>VAT</span><strong><?= $g($inv['tax']) ?></strong></div><?php endif; ?>
             <div class="is-big"><span>Total</span><strong><?= $g($inv['total']) ?></strong></div>
             <div><span>Paid</span><strong><?= $g($paid) ?></strong></div>
             <div class="is-big"><span>Balance due</span><strong><?= $g($balance) ?></strong></div>

@@ -78,12 +78,16 @@ final class Assets
         $now = gmdate('Y-m-d H:i:s');
         $added = 0;
         $seen = [];
-        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('id', 'expense_date', 'title', 'amount', 'business_percent', 'category_id', 'vehicle_id')->get() as $e) {
+        foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('id', 'expense_date', 'title', 'amount', 'business_percent', 'category_id', 'vehicle_id', 'vat_amount')->get() as $e) {
             if (($boxes[(int) $e['category_id']] ?? '') !== 'capital') {
                 continue;
             }
             $id = (int) $e['id'];
             $seen[$id] = true;
+            // VAT that is reclaimed is not part of what the equipment cost the business.
+            if (Vat::reclaim($e, 'capital') > 0) {
+                $e['amount'] = round((float) $e['amount'] - (float) $e['vat_amount'], 2);
+            }
             $a = $linked[$id] ?? null;
             if ($a === null) {
                 $db->table('money_assets')->insert(['name' => mb_substr((string) $e['title'], 0, 190), 'kind' => (int) $e['vehicle_id'] > 0 ? 'van' : 'equipment', 'bought_on' => (string) $e['expense_date'],

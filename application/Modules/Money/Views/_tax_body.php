@@ -105,6 +105,7 @@ $amt = static fn($v): string => (float) $v > 0 ? number_format((float) $v, 2, '.
             <li>Savings interest and dividends.</li>
             <li>Student loan repayments and the High Income Child Benefit Charge.</li>
             <li>Anything not in your records. Equipment bought is included through the Equipment page.</li>
+            <?php if (\AP\Modules\Money\Vat::on()): ?><li>VAT. You are VAT registered, so income and costs are counted without the VAT that goes to or comes back from HMRC<?= \AP\Modules\Money\Vat::scheme() === 'flat' ? ' (on the Flat Rate Scheme, takings less your flat rate)' : '' ?>.</li><?php endif; ?>
         </ul>
         <p class="mn-foot">The rates of each tax year are on Settings > Tax Rules. Where you pay tax and the trading allowance are in Settings > Money.</p>
     </section>

@@ -116,6 +116,11 @@ final class Form
                 $input = '<div class="ap-color' . $invalid . '"><input type="color" class="form-control form-control-color" id="' . e($id) . '" value="' . e($color) . '" data-color-for="' . e($id) . '_hex" aria-label="' . e($f['label']) . '"' . $attrs . '>'
                     . '<input type="text" class="form-control ap-code" id="' . e($id) . '_hex" name="' . e($name) . '" value="' . e($color) . '" maxlength="7" pattern="#[0-9A-Fa-f]{6}" data-color-hex="' . e($id) . '"' . $describe . $attrs . '></div>';
                 break;
+            case 'date':
+                // Never the browser's own date box: a text box the styled date picker opens on (dates are typed day first).
+                $input = '<input type="text" class="form-control' . $invalid . '" id="' . e($id) . '" name="' . e($name) . '" value="' . e(is_scalar($value) ? $value : '') . '"'
+                    . ' placeholder="' . e($f['placeholder'] !== '' ? $f['placeholder'] : '27/10/2026') . '" data-date autocomplete="off" inputmode="numeric"' . $required . $describe . $attrs . '>';
+                break;
             case 'password':
                 $placeholder = $f['secret'] ? ($f['saved'] ? __('core.secret_keep') : '') : $f['placeholder'];
                 $input = '<div class="input-group"><input type="password" class="form-control' . $invalid . '" id="' . e($id) . '" name="' . e($name) . '" value="" autocomplete="new-password"'

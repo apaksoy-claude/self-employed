@@ -214,6 +214,8 @@ final class ExpenseController
             }
         }
         $errors += \AP\Modules\Money\CustomFields::validate('expense', $request);
+        [$vat, $vatErrors] = \AP\Modules\Money\Vat::fromForm($request, $amount, $date);
+        $errors += $vatErrors;
         if ($errors) {
             return Forms::fail($request, $errors, admin_url('money/expenses/' . ($id ?: 'new')));
         }
@@ -224,7 +226,7 @@ final class ExpenseController
             'recurring' => $recurring ? 1 : 0, 'repeat_every' => $recurring ? $every : 0, 'repeat_unit' => $recurring ? $unit : null,
             'max_cycles' => $recurring ? max(0, min(9999, $request->int('max_cycles'))) : 0, 'repeat_until' => $recurring ? $until : null,
             'updated_at' => gmdate('Y-m-d H:i:s'),
-        ];
+        ] + $vat;
         if ($id > 0) {
             $old = $db->table('money_expenses')->where('id', $id)->whereNull('deleted_at')->first() ?? throw new HttpException(404);
             $data['next_date'] = $recurring ? ($old['next_date'] ?: Recurring::advance((string) $date, $every, $unit)) : null;
@@ -288,6 +290,15 @@ final class ExpenseController
             }
             $n = $q()->update(['business_percent' => $pct, 'updated_at' => $now]);
             session()->toast('success', $n . ' expense(s) now count ' . rtrim(rtrim(number_format($pct, 2), '0'), '.') . '% as business.');
+        } elseif ($do === 'vat' && ($val === 'none' || isset(\AP\Modules\Money\Vat::CODES[$val]))) {
+            // Each expense gets the VAT its amount holds at the chosen rate.
+            $n = 0;
+            foreach ($q()->get() as $row) {
+                $code = $val === 'none' ? '' : $val;
+                $q()->where('id', (int) $row['id'])->update(['vat_rate' => $code, 'vat_amount' => $code === '' ? 0 : \AP\Modules\Money\Vat::fromGross((float) $row['amount'], $code, (string) $row['expense_date']), 'updated_at' => $now]);
+                $n++;
+            }
+            session()->toast('success', $n . ' expense(s) changed.');
         } else {
             session()->toast('warning', 'That action is not available.');
         }

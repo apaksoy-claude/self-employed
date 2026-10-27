@@ -201,7 +201,8 @@ final class Money
         $db = self::db();
         [$from, $to] = self::taxYearRange($year);
         $inc = $db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to);
-        $income = round($inc->sum('amount'), 2);
+        $vatOn = Vat::on();
+        $income = $vatOn ? round(array_sum(array_map(static fn($r) => Vat::incomeNet($r), (clone $inc)->select('income_date', 'amount', 'invoice_id', 'vat_amount')->get())), 2) : round($inc->sum('amount'), 2);
         $cats = $db->table('money_categories')->get();
         $catById = [];
         foreach ($cats as $c) {
@@ -214,13 +215,13 @@ final class Money
         $perStream = [];
         $nExp = 0;
         $rows = $db->table('money_expenses')->whereNull('deleted_at')->where('expense_date', '>=', $from)->where('expense_date', '<=', $to)
-            ->select('category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id')->get();
+            ->select('category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id', 'vat_amount', 'expense_date')->get();
         $byMileage = Mileage::mileageVehicleIds();
         $flatHome = HomeUse::flat();
         foreach ($rows as $r) {
             $nExp++;
-            $mine = round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
             $cat = $catById[(int) $r['category_id']] ?? null;
+            $mine = $vatOn ? Vat::expenseNet($r, (string) ($cat['hmrc_box'] ?? '')) : round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
             if ($byMileage && in_array((int) $r['vehicle_id'], $byMileage, true) && empty($cat['with_mileage'])) {
                 $notCosts['mileage_covered'] = round(($notCosts['mileage_covered'] ?? 0) + $mine, 2);
                 continue;
@@ -265,9 +266,9 @@ final class Money
             $costs += $home;
             $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $home;
         }
-        foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount')->get() as $r) {
+        foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount', 'income_date', 'invoice_id', 'vat_amount')->get() as $r) {
             $sid = (int) $r['stream_id'];
-            $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + (float) $r['amount'];
+            $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + ($vatOn ? Vat::incomeNet($r) : (float) $r['amount']);
         }
         $names = $db->table('money_streams')->pluck('name', 'id');
         $streams = [];
@@ -529,16 +530,34 @@ final class Money
         return $prefix . ($max + 1);
     }
 
-    /** Adds up the lines of an invoice and stores subtotal and total. */
+    /**
+     * Adds up the lines of an invoice and stores subtotal, VAT and total. Each line's VAT follows its rate on the invoice date
+     * (when VAT registered then), and a discount takes its share off the VAT too.
+     */
     public static function recalcInvoice(int $id): void
     {
         $db = self::db();
-        $sub = round($db->table('money_invoice_items')->where('invoice_id', $id)->sum('total'), 2);
         $inv = $db->table('money_invoices')->where('id', $id)->first();
         if (!$inv) {
             return;
         }
+        $date = (string) $inv['issue_date'];
+        $registered = Vat::registeredOn($date);
+        $sub = 0.0;
+        $vat = 0.0;
+        foreach ($db->table('money_invoice_items')->where('invoice_id', $id)->get() as $it) {
+            $sub += (float) $it['total'];
+            $code = (string) ($it['vat_rate'] ?? '');
+            $v = $registered && $code !== '' ? Vat::onNet((float) $it['total'], $code, $date) : 0.0;
+            if (abs($v - (float) ($it['vat'] ?? 0)) > 0.004) {
+                $db->table('money_invoice_items')->where('id', (int) $it['id'])->update(['vat' => $v]);
+            }
+            $vat += $v;
+        }
+        $sub = round($sub, 2);
         $discount = min(round((float) $inv['discount'], 2), $sub);
-        $db->table('money_invoices')->where('id', $id)->update(['subtotal' => $sub, 'discount' => $discount, 'total' => round($sub - $discount + (float) $inv['tax'], 2), 'updated_at' => gmdate('Y-m-d H:i:s')]);
+        $tax = $sub > 0 ? round($vat * ($sub - $discount) / $sub, 2) : 0.0;
+        $db->table('money_invoices')->where('id', $id)->update(['subtotal' => $sub, 'discount' => $discount, 'tax' => $tax, 'total' => round($sub - $discount + $tax, 2), 'updated_at' => gmdate('Y-m-d H:i:s')]);
+        Vat::reset();
     }
 }

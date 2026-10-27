@@ -20,6 +20,10 @@ $rep = old('recurring', $e['recurring'] ?? 0);
                 <?= Fields::text('expense_date', 'Date', Money::showDate($e['expense_date'] ?? Money::today()), ['date' => true, 'col' => 'is-third']) ?>
                 <?= Fields::text('amount', 'Amount (£)', $e ? number_format((float) $e['amount'], 2, '.', '') : '', ['col' => 'is-third', 'inputmode' => 'decimal', 'placeholder' => '0.00']) ?>
                 <?= Fields::text('business_percent', 'Business use (%)', $pct, ['col' => 'is-third', 'inputmode' => 'decimal']) ?>
+                <?php if (\AP\Modules\Money\Vat::on()): ?>
+                <?= Fields::select('vat_rate', 'VAT On It', \AP\Modules\Money\Vat::options($e['expense_date'] ?? null), $e['vat_rate'] ?? str_replace('none', '', (string) setting('money.vat_cost_default', 'none')), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'As shown on the receipt.']) ?>
+                <?= Fields::text('vat_amount', 'VAT Amount (£)', \AP\Modules\Money\Vat::formValue($e, 'expense_date'), ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => 'Worked out for you', 'help' => 'Only if the receipt shows a different figure.']) ?>
+                <?php endif; ?>
                 <?= Fields::select('category_id', 'Category', $cats, $e['category_id'] ?? 0, ['none' => 'No category', 'col' => 'is-half']) ?>
                 <?= Fields::select('stream_id', 'Stream', $streams, $e['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>
                 <?= Fields::select('contact_id', 'Paid to', $contacts, $e['contact_id'] ?? 0, ['none' => 'Nobody in particular', 'col' => 'is-third']) ?>

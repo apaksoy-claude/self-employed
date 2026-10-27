@@ -137,6 +137,8 @@ final class IncomeController
             $errors['title'] = ['Say where the money came from.'];
         }
         $errors += \AP\Modules\Money\CustomFields::validate('income', $request);
+        [$vat, $vatErrors] = \AP\Modules\Money\Vat::fromForm($request, $amount, $date);
+        $errors += $vatErrors;
         if ($errors) {
             return Forms::fail($request, $errors, admin_url('money/income/' . ($id ?: 'new')));
         }
@@ -148,6 +150,10 @@ final class IncomeController
             'contact_id' => $request->int('contact_id'), 'stream_id' => $request->int('stream_id'), 'invoice_id' => $invoiceId, 'amount' => $amount,
             'payment_method' => mb_substr(trim($request->string('payment_method')), 0, 60) ?: null, 'reference' => mb_substr(trim($request->string('reference')), 0, 120) ?: null,
             'updated_at' => gmdate('Y-m-d H:i:s')];
+        if ($vat) {
+            // A payment for an invoice takes its VAT from the invoice.
+            $data += $invoiceId > 0 ? ['vat_rate' => '', 'vat_amount' => 0] : $vat;
+        }
         if ($id > 0) {
             $db->table('money_income')->where('id', $id)->whereNull('deleted_at')->first() ?? throw new HttpException(404);
             $db->table('money_income')->where('id', $id)->update($data);

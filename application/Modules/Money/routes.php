@@ -26,6 +26,7 @@ use AP\Modules\Money\Controllers\TaxController;
 use AP\Modules\Money\Controllers\TaxRulesController;
 use AP\Modules\Money\Controllers\SetupController;
 use AP\Modules\Money\Controllers\TripController;
+use AP\Modules\Money\Controllers\VatController;
 use AP\Modules\Money\Controllers\VehicleController;
 
 return static function (Router $r): void {
@@ -54,6 +55,8 @@ return static function (Router $r): void {
     $r->group(['prefix' => admin_path() . '/money', 'middleware' => ['auth', 'can:money.view'], 'as' => 'admin.money.'], static function (Router $r): void {
         $r->get('/', [OverviewController::class, 'index'], 'index');
         $r->get('/tax', [TaxController::class, 'index'], 'tax');
+        $r->get('/vat', [VatController::class, 'index'], 'vat');
+        $r->get('/vat/csv', [VatController::class, 'csv'], 'vat.csv');
         $r->get('/reports', [ReportController::class, 'index'], 'reports');
         $r->get('/reports/email', [ReportController::class, 'emailForm'], 'reports.email');
         $r->get('/reports/export/{what:[a-z]+}', [ReportController::class, 'export'], 'reports.export');
@@ -119,11 +122,9 @@ return static function (Router $r): void {
             $r->get('/dashboard/cards/{id:[a-z0-9_]+}/style', [CardStyleController::class, 'cardForm'], 'dashboard.cards.style');
             $r->post('/dashboard/cards/style', [CardStyleController::class, 'cardSave'], 'dashboard.cards.style.save');
             $r->post('/dashboard/reset', [DashboardController::class, 'reset'], 'dashboard.reset');
-
-
-
-
             $r->post('/tax/figures', [TaxController::class, 'savePersonal'], 'tax.figures');
+            $r->post('/vat/file', [VatController::class, 'file'], 'vat.file');
+            $r->post('/vat/unfile', [VatController::class, 'unfile'], 'vat.unfile');
             $r->get('/equipment/new', [AssetController::class, 'form'], 'equipment.new');
             $r->get('/equipment/{id:\d+}', [AssetController::class, 'form'], 'equipment.edit');
             $r->post('/equipment/save', [AssetController::class, 'save'], 'equipment.save');

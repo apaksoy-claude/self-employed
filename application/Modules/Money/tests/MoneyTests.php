@@ -43,6 +43,8 @@ use AP\Modules\Money\Setup;
 use AP\Modules\Money\Trades;
 use AP\Modules\Money\TaxRules;
 use AP\Modules\Money\HomeUse;
+use AP\Modules\Money\Vat;
+use AP\Modules\Money\Controllers\VatController;
 use AP\Modules\Money\Controllers\SetupController;
 use AP\Tests\FakeAuth;
 use RuntimeException;
@@ -2642,6 +2644,134 @@ final class MoneyTests
         return '';
     }
 
+    public function test_vat_goes_on_invoice_lines_comes_off_profit_and_adds_up_to_the_nine_boxes(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $off = Insights::totals(Insights::load(), $from, $to);
+            $s->set('money.vat_registered', true);
+            $s->set('money.vat_from', '01/07/2026');
+            $s->set('money.vat_number', 'GB123456789');
+            $s->set('money.vat_stagger', '1');
+            $json = ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json'];
+            $post = static fn(string $path, array $d) => new Request('POST', $path, [], $d + ['after' => 'list'], [], $json);
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            // An invoice with a standard rate line, a zero rate line and a 10% discount: the discount takes its share off the VAT too.
+            $now = '2026-07-10 09:00:00';
+            $id = (int) $db->table('money_invoices')->insertGetId(['number' => 'INV-V1', 'contact_id' => 1, 'issue_date' => '2026-07-10', 'due_date' => '2026-07-24', 'status' => 'sent', 'created_at' => $now, 'updated_at' => $now]);
+            $ic = new InvoiceController();
+            $ic->itemSave($post('/x', ['title' => 'Design work', 'quantity' => '2', 'rate' => '500', 'vat_rate' => 'standard']), (string) $id);
+            $ic->itemSave($post('/x', ['title' => 'Printed books', 'quantity' => '1', 'rate' => '200', 'vat_rate' => 'zero']), (string) $id);
+            $ic->discount($post('/x', ['discount' => '120']), (string) $id);
+            $inv = $db->table('money_invoices')->where('id', $id)->first();
+            $this->assert((float) $inv['subtotal'] === 1200.0 && (float) $inv['tax'] === 180.0 && (float) $inv['total'] === 1260.0, 'VAT 200 less a tenth for the discount: ' . json_encode($inv));
+            $this->assert($db->table('money_invoice_items')->where('invoice_id', $id)->pluck('vat') == [200.0, 0.0] || array_map('floatval', $db->table('money_invoice_items')->where('invoice_id', $id)->pluck('vat')) === [200.0, 0.0], 'each line keeps its VAT');
+            // Lines on an invoice dated before registration carry no VAT.
+            $db->table('money_invoice_items')->where('invoice_id', 1)->update(['vat_rate' => 'standard']);
+            Money::recalcInvoice(1);
+            $this->assert((float) $db->table('money_invoices')->where('id', 1)->value('tax') === 0.0, 'no VAT before the registration date');
+            // The invoice, its PDF and the item form show the VAT.
+            $page = $ic->show($get('/admin/money/invoices/' . $id), (string) $id)->body;
+            $this->assert(str_contains($page, 'VAT number: GB123456789') && str_contains($page, '>20%<') && str_contains($page, '>0%<') && str_contains($page, '£180.00') && str_contains($page, '£1,260.00'), 'the invoice page shows rates, VAT and the VAT number');
+            $doc = $ic->document($get('/admin/money/invoices/' . $id . '/pdf'), (string) $id)->body;
+            $this->assert(str_contains($doc, 'VAT Number: GB123456789') && str_contains($doc, '<th class="r">VAT</th>'), 'so does the printable invoice');
+            $plain = $ic->show($get('/admin/money/invoices/2'), '2')->body;
+            $this->assert(!str_contains($plain, 'VAT number'), 'an invoice without VAT stays plain');
+            $form = $ic->itemForm($get('/x'), (string) $id)->body;
+            $this->assert(str_contains($form, 'name="vat_rate"') && str_contains($form, 'Standard 20%'), 'the item form offers the rates');
+            // Half the invoice is paid; a payment with no invoice and two costs have VAT typed or worked out.
+            $db->table('money_income')->insert(['income_date' => '2026-08-01', 'title' => 'Payment for INV-V1', 'contact_id' => 1, 'invoice_id' => $id, 'amount' => 630, 'created_at' => $now, 'updated_at' => $now]);
+            $inc = new IncomeController();
+            $r = json_decode($inc->save($post('/x', ['title' => 'Shop sale', 'income_date' => '15/08/2026', 'amount' => '120', 'vat_rate' => 'standard', 'vat_amount' => '']))->body, true);
+            $this->assert($r['ok'] && (float) $db->table('money_income')->where('title', 'Shop sale')->value('vat_amount') === 20.0, 'VAT worked out from a payment with VAT in it');
+            $ec = new ExpenseController();
+            $bad = $ec->save($post('/x', ['title' => 'Odd', 'expense_date' => '20/07/2026', 'amount' => '10', 'vat_rate' => 'standard', 'vat_amount' => '50']));
+            $this->assert($bad->status === 422 && isset(json_decode($bad->body, true)['errors']['vat_amount']), 'VAT cannot be more than the amount');
+            $ec->save($post('/x', ['title' => 'Web hosting', 'expense_date' => '20/07/2026', 'amount' => '240', 'category_id' => '7', 'vat_rate' => 'standard', 'vat_amount' => '']));
+            $ec->save($post('/x', ['title' => 'Phone', 'expense_date' => '21/07/2026', 'amount' => '60', 'business_percent' => '50', 'category_id' => '7', 'vat_rate' => 'standard', 'vat_amount' => '9']));
+            $this->assert((float) $db->table('money_expenses')->where('title', 'Web hosting')->value('vat_amount') === 40.0 && (float) $db->table('money_expenses')->where('title', 'Phone')->value('vat_amount') === 9.0, 'costs keep their VAT');
+            $phone = $db->table('money_expenses')->where('title', 'Phone')->first();
+            $this->assert(Vat::formValue($phone, 'expense_date') === '9.00' && Vat::formValue($db->table('money_expenses')->where('title', 'Web hosting')->first(), 'expense_date') === '', 'the VAT box stays empty when it is just what the rate gives');
+            $eform = $ec->form($get('/x'), (string) $phone['id'])->body;
+            $this->assert(str_contains($eform, 'name="vat_amount"') && str_contains($eform, 'value="9.00"'), 'the expense form shows the VAT');
+            Vat::reset();
+            // The nine boxes for July to September (standard scheme, invoice dates).
+            $b = Vat::boxes('2026-07-01', '2026-09-30');
+            $this->assert($b['box1'] === 200.0 && $b['box4'] === 44.5 && $b['box5'] === 155.5 && $b['box6'] === 1180.0 && $b['box7'] === 225.0, 'the boxes add up: ' . json_encode(array_slice($b, 0, 9)));
+            // Profit leaves VAT out: 90 of the invoice payment and 20 of the shop sale, and 44.50 reclaimed on costs.
+            $on = Insights::totals(Insights::load(), $from, $to);
+            $this->assert(abs(($off['income'] + 630 + 120 - 110) - $on['income']) < 0.01, 'income without VAT: ' . $on['income']);
+            $o = Money::overview('2026-27');
+            $this->assert(abs($o['income'] - $on['income']) < 0.01 && abs($o['costs'] - $on['costs']) < 0.01, 'the overview agrees: ' . $o['costs'] . ' / ' . $on['costs']);
+            // Cash accounting counts the money in, not the invoice.
+            $s->set('money.vat_cash', true);
+            $c = Vat::boxes('2026-07-01', '2026-09-30');
+            $this->assert($c['box1'] === 110.0 && $c['box6'] === 640.0 && $c['cash'], 'cash accounting: ' . json_encode(array_slice($c, 0, 9)));
+            $s->set('money.vat_cash', false);
+            // The Flat Rate Scheme: a set share of takings with VAT, no VAT back on costs under £2,000.
+            $s->set('money.vat_scheme', 'flat');
+            $s->set('money.vat_flat_rate', '12.5');
+            $f = Vat::boxes('2026-07-01', '2026-09-30');
+            $this->assert($f['box1'] === 172.5 && $f['box4'] === 0.0 && $f['box6'] === 1380.0 && $f['flat'], 'flat rate: ' . json_encode(array_slice($f, 0, 9)));
+            $s->set('money.vat_first_year', true);
+            $this->assert(Vat::flatRate('2026-08-01') === 11.5 && Vat::flatRate('2027-07-01') === 12.5, 'first year 1% off ends on the anniversary');
+            $s->set('money.vat_first_year', false);
+            $s->set('money.vat_scheme', 'standard');
+            // Periods follow the stagger from the registration date.
+            $periods = Vat::periods('2026-10-27');
+            $this->assert(count($periods) === 2 && $periods[1]['from'] === '2026-07-01' && $periods[1]['to'] === '2026-09-30' && $periods[1]['due'] === '2026-11-07' && $periods[0]['to'] === '2026-12-31', 'quarters and due dates: ' . json_encode($periods));
+            $s->set('money.vat_stagger', 'm');
+            $this->assert(count(Vat::periods('2026-10-27')) === 4 && Vat::periods('2026-10-27')[0]['label'] === Money::showDate('2026-10-01') . ' to ' . Money::showDate('2026-10-31'), 'monthly returns');
+            $s->set('money.vat_stagger', '1');
+            $note = Vat::reminder('2026-10-27');
+            $this->assert($note !== null && $note['tone'] === 'warn' && str_contains($note['text'], 'is due by'), 'the dashboard says a return is due');
+            $this->assert(Vat::reminder('2026-11-20')['tone'] === 'bad', 'and then that it is late');
+            // The VAT page: the period, the boxes, filing it in the background, and changes after filing.
+            $vc = new VatController();
+            $pg = $vc->index($get('/admin/money/vat', ['period' => '2026-07-01']));
+            $this->assert($pg->status === 200 && str_contains($pg->body, 'The Nine Boxes') && str_contains($pg->body, 'data-vat-nav') && str_contains($pg->body, 'Mark As Filed') && str_contains($pg->body, '£155.50')
+                && str_contains($pg->body, 'Jul to Sep 2026') && str_contains($pg->body, 'data-date'), 'the page shows the period and the form');
+            $no = $vc->file($post('/x', ['period' => '2026-07-01', 'filed_on' => 'soon']));
+            $this->assert($no->status === 422 && isset(json_decode($no->body, true)['errors']['filed_on']), 'the filing date is checked');
+            $yes = json_decode($vc->file($post('/x', ['period' => '2026-07-01', 'filed_on' => '02/11/2026', 'reference' => 'ABC123']))->body, true);
+            $kept = json_decode((string) $db->table('money_vat_returns')->where('period_from', '2026-07-01')->value('boxes'), true);
+            $this->assert($yes['ok'] && str_contains($yes['html'], 'ABC123') && str_contains($yes['nav'], '>Filed<') && $kept['box5'] === 155.5, 'marked as filed with a copy of the figures');
+            $this->assert(Vat::reminder('2026-11-20') === null, 'a filed return needs no reminder');
+            $db->table('money_expenses')->insert(['expense_date' => '2026-09-01', 'title' => 'Late receipt', 'category_id' => 7, 'amount' => 12, 'business_percent' => 100, 'vat_rate' => 'standard', 'vat_amount' => 2, 'created_at' => $now, 'updated_at' => $now]);
+            $after = $vc->index($get('/admin/money/vat', ['period' => '2026-07-01']))->body;
+            $this->assert(str_contains($after, 'changed after you filed') && str_contains($after, 'Filed: £155.50'), 'records changed after filing are pointed out');
+            $csv = $vc->csv($get('/x', ['period' => '2026-07-01']));
+            $this->assert(str_contains($csv->body, 'Net VAT') && str_contains($csv->body, 'Invoice INV-V1') && str_contains((string) ($csv->headers['Content-Disposition'] ?? ''), 'vat-return-2026-07-01'), 'the CSV has the boxes and the lines');
+            $un = json_decode($vc->unfile($post('/x', ['period' => '2026-07-01']))->body, true);
+            $this->assert($un['ok'] && !$db->table('money_vat_returns')->exists(), 'the filed mark can come off');
+            // Ticked expenses can have their VAT set together.
+            $ec->bulk(new Request('POST', '/x', [], ['ids' => [(string) $phone['id']], 'do' => 'vat', 'value' => 'none'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($db->table('money_expenses')->where('id', (int) $phone['id'])->value('vat_rate') === '' && (float) $db->table('money_expenses')->where('id', (int) $phone['id'])->value('vat_amount') === 0.0, 'bulk VAT');
+            // Not registered: the turnover watch.
+            $s->set('money.vat_registered', false);
+            $db->table('money_income')->insert(['income_date' => '2026-09-01', 'title' => 'Big job', 'amount' => 75000, 'created_at' => $now, 'updated_at' => $now]);
+            $w = Vat::watch('2026-09-30');
+            $this->assert($w['state'] === 'near' && $w['threshold'] === 90000.0 && abs($w['turnover'] - 75819) < 0.01, 'near the threshold: ' . json_encode($w));
+            $this->assert(Vat::reminder('2026-09-30')['tone'] === 'warn', 'the dashboard warns');
+            $db->table('money_income')->insert(['income_date' => '2026-09-02', 'title' => 'Bigger job', 'amount' => 20000, 'created_at' => $now, 'updated_at' => $now]);
+            $this->assert(Vat::watch('2026-09-30')['state'] === 'over', 'over the threshold');
+            $wp = $vc->index($get('/admin/money/vat'))->body;
+            $this->assert(str_contains($wp, 'Your Last 12 Months') && str_contains($wp, 'When You Must Register') && !str_contains($wp, 'The Nine Boxes'), 'the page shows the watch');
+            $this->assert(Vat::boxes('2026-07-01', '2026-09-30')['box1'] === 0.0, 'nothing counts when not registered');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/vat'] ?? ''), 'nine boxes'), 'the search finds VAT');
+            $defs = $s->definitions();
+            $this->assert(($defs['money.vat_flat_rate']['show_if'] ?? null) === ['money.vat_registered' => '1', 'money.vat_scheme' => 'flat'] && ($defs['money.vat_from']['type'] ?? '') === 'date', 'settings show only what applies and use the date picker');
+            $sp = (new \AP\Modules\Settings\Controllers\SettingsController())->group($get('/admin/settings/money_vat'), 'money_vat');
+            $this->assert($sp->status === 200 && str_contains($sp->body, 'I Am VAT Registered') && str_contains($sp->body, 'name="money_vat_from"') && str_contains($sp->body, 'data-date')
+                && str_contains($sp->body, 'data-show-if') && !str_contains($sp->body, 'type="date"'), 'Settings > VAT renders with the date picker and only what applies');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';
@@ -2685,6 +2815,7 @@ final class MoneyTests
             TaxRules::reset();
             Mileage::reset();
             \AP\Modules\Money\Assets::reset();
+            Vat::reset();
             $modules->boot($app, false, true);
             $app->set('auth', new FakeAuth());
             View::addNamespace('app', AP_ROOT . '/Views');

@@ -14,6 +14,12 @@ $i ??= null;
         <?= Fields::text('title', 'Where did it come from', $i['title'] ?? '', ['required' => true, 'maxlength' => 255, 'placeholder' => 'Weekly platform payout']) ?>
         <?= Fields::text('income_date', 'Date received', Money::showDate($i['income_date'] ?? Money::today()), ['date' => true, 'col' => 'is-half']) ?>
         <?= Fields::text('amount', 'Amount (£)', $i ? number_format((float) $i['amount'], 2, '.', '') : '', ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => '0.00']) ?>
+        <?php if (\AP\Modules\Money\Vat::on()): ?>
+        <div class="mn-fields" data-vat-income<?= (int) ($i['invoice_id'] ?? 0) > 0 ? ' hidden' : '' ?>>
+            <?= Fields::select('vat_rate', 'VAT In It', \AP\Modules\Money\Vat::options($i['income_date'] ?? null), $i['vat_rate'] ?? (string) setting('money.vat_default', 'standard'), ['none' => 'No VAT', 'none_value' => '', 'col' => 'is-half', 'help' => 'For money not paid against an invoice. Payments for invoices take the invoice\'s VAT.']) ?>
+            <?= Fields::text('vat_amount', 'VAT Amount (£)', \AP\Modules\Money\Vat::formValue($i, 'income_date'), ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => 'Worked out for you']) ?>
+        </div>
+        <?php endif; ?>
         <?= Fields::select('stream_id', 'Stream', $streams, $i['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>
         <?= Fields::select('contact_id', 'Client', $contacts, $i['contact_id'] ?? 0, ['none' => 'Nobody in particular', 'col' => 'is-half']) ?>
         <?= Fields::select('payment_method', 'Paid By', Money::payOptions('money.paid_by', (string) ($i['payment_method'] ?? '')), $i['payment_method'] ?? '', ['none' => 'Not Said', 'none_value' => '', 'col' => 'is-half']) ?>

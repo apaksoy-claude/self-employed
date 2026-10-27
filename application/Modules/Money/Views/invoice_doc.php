@@ -9,6 +9,9 @@ $state = (string) $f['state'];
 $labels = ['paid' => 'Paid', 'part' => 'Part Paid', 'unpaid' => 'Unpaid', 'overdue' => 'Overdue', 'draft' => 'Draft', 'cancelled' => 'Cancelled'];
 $logo = (string) $biz['logo'] !== '' ? (string) $biz['logo'] : trim((string) setting('email.logo_url', ''));
 $paid = (float) $f['paid'];
+$vatShow = \AP\Modules\Money\Vat::onInvoice($inv, $items);
+$vatNo = $vatShow ? \AP\Modules\Money\Vat::number() : '';
+$cols = ($L['qty'] ? 4 : 2) + ($vatShow ? 1 : 0);
 ?>
 <!doctype html>
 <html lang="en">
@@ -34,26 +37,28 @@ $paid = (float) $f['paid'];
     </header>
     <section class="doc-parties">
         <div><small><?= e($L['from']) ?></small><strong><?= e($biz['name']) ?></strong>
-            <?php foreach (['address', 'phone', 'email', 'website'] as $k): if ($biz[$k] !== ''): ?><span><?= nl2br(e((string) $biz[$k])) ?></span><?php endif; endforeach; ?></div>
+            <?php foreach (['address', 'phone', 'email', 'website'] as $k): if ($biz[$k] !== ''): ?><span><?= nl2br(e((string) $biz[$k])) ?></span><?php endif; endforeach; ?>
+            <?php if ($vatNo !== ''): ?><span>VAT Number: <?= e($vatNo) ?></span><?php endif; ?></div>
         <div><small><?= e($L['to']) ?></small><strong><?= e((string) ($client['name'] ?? 'No client')) ?></strong>
             <?php if ($client): ?><span><?= e(implode(', ', array_filter([(string) $client['address'], (string) $client['city'], (string) $client['postcode']]))) ?></span><?php endif; ?></div>
         <div class="doc-dates"><small>Bill Date</small><strong><?= e(Money::showDate((string) $inv['issue_date'])) ?></strong>
             <?php if ($inv['due_date']): ?><small>Due Date</small><strong><?= e(Money::showDate((string) $inv['due_date'])) ?></strong><?php endif; ?></div>
     </section>
     <table class="doc-items">
-        <thead><tr><th>Item</th><?php if ($L['qty']): ?><th class="r">Quantity</th><th class="r">Rate</th><?php endif; ?><th class="r">Total</th></tr></thead>
+        <thead><tr><th>Item</th><?php if ($L['qty']): ?><th class="r">Quantity</th><th class="r">Rate</th><?php endif; ?><?php if ($vatShow): ?><th class="r">VAT</th><?php endif; ?><th class="r">Total</th></tr></thead>
         <tbody>
         <?php foreach ($items as $it): ?>
             <tr><td><strong><?= e((string) $it['title']) ?></strong><?php if ($it['description']): ?><div class="doc-desc"><?= nl2br(e((string) $it['description'])) ?></div><?php endif; ?></td>
                 <?php if ($L['qty']): ?><td class="r"><?= e(rtrim(rtrim(number_format((float) $it['quantity'], 3), '0'), '.')) ?> <?= e((string) $it['unit']) ?></td>
-                <td class="r"><?= $g($it['rate']) ?></td><?php endif; ?><td class="r"><?= $g($it['total']) ?></td></tr>
+                <td class="r"><?= $g($it['rate']) ?></td><?php endif; ?><?php if ($vatShow): ?><td class="r"><?= e(\AP\Modules\Money\Vat::lineLabel((string) ($it['vat_rate'] ?? ''), (string) $inv['issue_date'])) ?></td><?php endif; ?><td class="r"><?= $g($it['total']) ?></td></tr>
         <?php endforeach; ?>
-        <?php if (!$items): ?><tr><td colspan="<?= $L['qty'] ? 4 : 2 ?>" class="doc-desc">No items.</td></tr><?php endif; ?>
+        <?php if (!$items): ?><tr><td colspan="<?= $cols ?>" class="doc-desc">No items.</td></tr><?php endif; ?>
         </tbody>
     </table>
     <section class="doc-sum">
         <div><span>Sub Total</span><strong><?= $g($inv['subtotal']) ?></strong></div>
         <?php if ((float) $inv['discount'] > 0): ?><div><span>Discount</span><strong>-<?= $g($inv['discount']) ?></strong></div><?php endif; ?>
+        <?php if ($vatShow): ?><div><span>VAT</span><strong><?= $g($inv['tax']) ?></strong></div><?php endif; ?>
         <div><span>Total</span><strong><?= $g($inv['total']) ?></strong></div>
         <div><span>Paid</span><strong><?= $g($paid) ?></strong></div>
         <div class="is-due"><span><?= e($L['due']) ?></span><strong><?= $g($f['balance']) ?></strong></div>

@@ -496,6 +496,9 @@ document.addEventListener('click', function (ev) {
         fill(form, 'contact_id', it.getAttribute('data-contact'), true); fill(form, 'stream_id', it.getAttribute('data-stream'), true);
         fill(form, 'amount', it.getAttribute('data-balance'), true); fill(form, 'title', it.getAttribute('data-title'), true);
       }
+      // A payment for an invoice takes the invoice's VAT, so its own VAT boxes only show when no invoice is chosen.
+      var vb = form ? form.querySelector('[data-vat-income]') : null;
+      if (vb) { vb.hidden = (it.getAttribute('data-value') || '0') !== '0'; }
       return;
     }
     if (!t.closest('[data-pick]')) { closeAll(); }
@@ -606,4 +609,13 @@ document.addEventListener('change', function (e) {
   if (!t.matches || !t.matches('select[name="kind"]') || !t.form) { return; }
   var box = t.form.querySelector('[data-asset-vehicle]');
   if (box) { box.hidden = ['car', 'van', 'motorcycle'].indexOf(t.value) === -1; }
+});
+
+// Money > VAT: after a return is marked as filed (or not), the period list on the left shows it too.
+document.addEventListener('bg-saved', function (e) {
+  var j = e.detail || {}, nav = document.querySelector('[data-vat-nav]');
+  if (!j.nav || !nav) { return; }
+  var holder = document.createElement('div');
+  holder.innerHTML = j.nav;
+  if (holder.firstElementChild) { nav.replaceWith(holder.firstElementChild); }
 });

@@ -159,6 +159,7 @@ final class Reports
     {
         $db = Money::db();
         [$from, $to] = $year === 'all' ? ['1970-01-01', '2100-12-31'] : Money::taxYearRange($year);
+        $vat = Vat::on();
         switch ($what) {
             case 'summary':
                 $ins = Insights::load();
@@ -172,9 +173,9 @@ final class Reports
                 [$xh, $xv] = self::extra('income');
                 $rows = [];
                 foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->orderBy('income_date')->orderBy('id')->get() as $r) {
-                    $rows[] = [$r['income_date'], $r['title'], (float) $r['amount'], $streams[(int) $r['stream_id']] ?? '', (int) $r['invoice_id'] > 0 ? 'Yes' : 'No', $r['description'], ...$xv((int) $r['id'])];
+                    $rows[] = [$r['income_date'], $r['title'], (float) $r['amount'], ...($vat ? [Vat::incomeVat($r)] : []), $streams[(int) $r['stream_id']] ?? '', (int) $r['invoice_id'] > 0 ? 'Yes' : 'No', $r['description'], ...$xv((int) $r['id'])];
                 }
-                return self::csv(['Date', 'Title', 'Amount', 'Stream', 'Paid against an invoice', 'Note', ...$xh], $rows);
+                return self::csv(['Date', 'Title', 'Amount', ...($vat ? ['VAT'] : []), 'Stream', 'Paid against an invoice', 'Note', ...$xh], $rows);
             case 'expenses':
                 $cats = Money::options('money_categories');
                 $boxes = $db->table('money_categories')->pluck('hmrc_box', 'id');
@@ -183,10 +184,11 @@ final class Reports
                 $rows = [];
                 foreach ($db->table('money_expenses')->whereNull('deleted_at')->where('expense_date', '>=', $from)->where('expense_date', '<=', $to)->orderBy('expense_date')->orderBy('id')->get() as $r) {
                     $box = (string) ($boxes[(int) $r['category_id']] ?? 'other');
-                    $rows[] = [$r['expense_date'], $r['title'], (float) $r['amount'], (float) $r['business_percent'], round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2),
+                    $rows[] = [$r['expense_date'], $r['title'], (float) $r['amount'], (float) $r['business_percent'],
+                        ...($vat ? [(float) $r['vat_amount'], Vat::reclaim($r, $box), Vat::expenseNet($r, $box)] : [round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2)]),
                         $cats[(int) $r['category_id']] ?? 'No category', Money::BOX_SHORT[$box] ?? $box, $veh[(int) $r['vehicle_id']] ?? '', $r['description'], ...$xv((int) $r['id'])];
                 }
-                return self::csv(['Date', 'Title', 'Amount', 'Business %', 'Business amount', 'Category', 'Tax box', 'Vehicle', 'Note', ...$xh], $rows);
+                return self::csv(['Date', 'Title', 'Amount', 'Business %', ...($vat ? ['VAT', 'VAT reclaimed', 'Business amount without VAT reclaimed'] : ['Business amount']), 'Category', 'Tax box', 'Vehicle', 'Note', ...$xh], $rows);
             case 'invoices':
                 $contacts = Money::options('money_contacts');
                 $paid = Money::paidByInvoice();
@@ -194,9 +196,9 @@ final class Reports
                 $rows = [];
                 foreach ($db->table('money_invoices')->whereNull('deleted_at')->where('issue_date', '>=', $from)->where('issue_date', '<=', $to)->orderBy('issue_date')->orderBy('id')->get() as $r) {
                     $p = $paid[(int) $r['id']] ?? 0.0;
-                    $rows[] = [$r['number'], $contacts[(int) $r['contact_id']] ?? '', $r['issue_date'], $r['due_date'], Money::invoiceState($r, $p), (float) $r['total'], $p, Money::invoiceBalance($r, $p), ...$xv((int) $r['id'])];
+                    $rows[] = [$r['number'], $contacts[(int) $r['contact_id']] ?? '', $r['issue_date'], $r['due_date'], Money::invoiceState($r, $p), ...($vat ? [(float) $r['tax']] : []), (float) $r['total'], $p, Money::invoiceBalance($r, $p), ...$xv((int) $r['id'])];
                 }
-                return self::csv(['Number', 'Client', 'Issued', 'Due', 'State', 'Total', 'Paid', 'Balance', ...$xh], $rows);
+                return self::csv(['Number', 'Client', 'Issued', 'Due', 'State', ...($vat ? ['VAT'] : []), 'Total', 'Paid', 'Balance', ...$xh], $rows);
             case 'mileage':
                 $veh = Money::options('money_vehicles');
                 $rows = [];
