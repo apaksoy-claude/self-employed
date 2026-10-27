@@ -51,6 +51,8 @@ $home = array_map(static fn($h) => ['from' => (string) $h['from'], 'to' => $h['t
                     <div class="row"><?php foreach ($group('ni') as $k) { echo $field($k); } ?></div></section>
                 <section class="mn-card tr-card"><header><div><h2><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i>Allowances and Thresholds</h2><p>The trading allowance can be taken instead of your real costs. Payments on account and Making Tax Digital follow these limits.</p></div></header>
                     <div class="row"><?php foreach ($group('allow') as $k) { echo $field($k); } ?></div></section>
+                <section class="mn-card tr-card"><header><div><h2><i class="fa-solid fa-toolbox" aria-hidden="true"></i>Equipment and Capital Allowances</h2><p>Used for equipment and cars with traditional accounting, and for cars on the cash basis. Vans and motorcycles count as equipment.</p></div></header>
+                    <div class="row"><?php foreach ($group('capital') as $k) { echo $field($k); } ?></div></section>
                 <section class="mn-card tr-card"><header><div><h2><i class="fa-solid fa-route" aria-hidden="true"></i>Simplified Expenses</h2><p>The HMRC mileage rates, and the flat rate a month for working from home by hours worked at home that month.</p></div></header>
                     <div class="row"><?php foreach ($group('simple') as $k) { echo $field($k); } ?></div>
                     <?= Form::field(['name' => 'home_rates', 'label' => 'Working From Home Flat Rate', 'type' => 'repeater', 'value' => $home, 'add_label' => 'Add A Row', 'max_rows' => 10,

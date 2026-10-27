@@ -599,3 +599,11 @@ document.addEventListener('change', function (e) { var t = e.target; if (t.match
       .then(function () { if (go) { go.disabled = false; } if (label) { label.textContent = before; } });
   });
 })();
+
+// Equipment form: the CO2 and vehicle boxes only matter for cars, vans and motorcycles.
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (!t.matches || !t.matches('select[name="kind"]') || !t.form) { return; }
+  var box = t.form.querySelector('[data-asset-vehicle]');
+  if (box) { box.hidden = ['car', 'van', 'motorcycle'].indexOf(t.value) === -1; }
+});

@@ -2522,6 +2522,126 @@ final class MoneyTests
         return '';
     }
 
+    /* -------------------------------------------------------------- equipment and capital allowances */
+
+    public function test_equipment_is_claimed_in_full_on_the_cash_basis_and_comes_from_expenses_by_itself(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            $now = '2026-06-01 00:00:00';
+            $cat = (int) $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Equipment Bought', 'hmrc_box' => 'capital', 'allowable' => 0, 'active' => 1, 'created_at' => $now]);
+            $db->table('money_income')->insert(['income_date' => '2026-05-01', 'title' => 'Work', 'amount' => 20000, 'created_at' => $now, 'updated_at' => $now]);
+            $eid = (int) $db->table('money_expenses')->insertGetId(['expense_date' => '2026-06-01', 'title' => 'Laptop', 'category_id' => $cat, 'amount' => 1200, 'business_percent' => 80, 'created_at' => $now, 'updated_at' => $now]);
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $this->assert(\AP\Modules\Money\Assets::sync() === 1 && \AP\Modules\Money\Assets::sync() === 0, 'the equipment expense becomes one entry, once');
+            $a = $db->table('money_assets')->first();
+            $this->assert($a['name'] === 'Laptop' && (int) $a['expense_id'] === $eid && (float) $a['cost'] === 1200.0 && (float) $a['business_percent'] === 80.0, 'with the expense details');
+            $y = \AP\Modules\Money\Assets::year('2026-27');
+            $this->assert(($y['cash'] ?? 0) === 960.0 && $y['total'] === 960.0, 'cash basis: the business share is claimed in the year bought');
+            $t = Insights::totals(Insights::load(), $from, $to);
+            $this->assert($t['costs'] === 960.0 && $t['profit'] === 19040.0, 'profit goes down by the claim, and the expense itself is not counted twice');
+            $o = Money::overview('2026-27');
+            $this->assert(($o['boxes']['capital_claims'] ?? 0) === 960.0 && $o['profit'] === 19040.0, 'the overview agrees');
+            // the expense changes: the entry follows; the expense goes: so does the entry
+            $db->table('money_expenses')->where('id', $eid)->update(['amount' => 1500]);
+            \AP\Modules\Money\Assets::reset();
+            \AP\Modules\Money\Assets::sync();
+            $this->assert((float) $db->table('money_assets')->value('cost') === 1500.0, 'a changed expense changes the entry');
+            $db->table('money_expenses')->where('id', $eid)->update(['deleted_at' => $now]);
+            \AP\Modules\Money\Assets::sync();
+            $this->assert($db->table('money_assets')->whereNull('deleted_at')->count() === 0, 'a deleted expense removes its entry');
+            $db->table('money_expenses')->where('id', $eid)->update(['deleted_at' => null]);
+            // selling on the cash basis counts as income
+            \AP\Modules\Money\Assets::reset();
+            $db->table('money_assets')->where('expense_id', $eid)->update(['deleted_at' => null, 'sold_on' => '2027-06-01', 'sold_for' => 300]);
+            \AP\Modules\Money\Assets::reset();
+            $this->assert((\AP\Modules\Money\Assets::year('2027-28')['sale'] ?? 0) === -240.0, 'the sale (business share) comes back as income the year it is sold');
+        });
+        return '';
+    }
+
+    public function test_traditional_accounting_uses_the_annual_investment_allowance_pools_and_first_year_allowances(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $s->set('money.basis', 'traditional');
+            $db = $this->db;
+            $now = '2026-06-01 00:00:00';
+            $add = static fn(array $a): int => $db->table('money_assets')->insertGetId($a + ['business_percent' => 100, 'new_unused' => 1, 'created_at' => $now, 'updated_at' => $now]);
+            $add(['name' => 'Laptop', 'kind' => 'computer', 'bought_on' => '2026-05-01', 'cost' => 1200]);
+            $add(['name' => 'Big machine', 'kind' => 'machinery', 'bought_on' => '2026-06-01', 'cost' => 1500000]);
+            $car = $add(['name' => 'Estate car', 'kind' => 'car', 'bought_on' => '2026-07-01', 'cost' => 20000, 'co2' => 120]);
+            $add(['name' => 'Hybrid', 'kind' => 'car', 'bought_on' => '2026-07-02', 'cost' => 10000, 'co2' => 40, 'business_percent' => 70]);
+            $add(['name' => 'Electric', 'kind' => 'car', 'bought_on' => '2026-07-03', 'cost' => 30000, 'co2' => 0]);
+            \AP\Modules\Money\Assets::reset();
+            $y = \AP\Modules\Money\Assets::year('2026-27');
+            $this->assert($y['aia'] === 1000000.0, 'the Annual Investment Allowance stops at the yearly limit: ' . json_encode($y));
+            $this->assert($y['fya'] === round(501200 * 0.4 + 30000, 2), 'new equipment over the limit gets 40% first year allowance, and the new electric car 100%');
+            $this->assert($y['wda_main'] === round((501200 - 200480) * 0.14, 2), 'the rest of the equipment goes in the main pool at 14%');
+            $this->assert($y['wda_special'] === 1200.0, 'a car over 50 g/km goes in the special rate pool at 6%');
+            $this->assert($y['single'] === 980.0, 'a car used privately has its own pool and the claim is cut to the business share');
+            $this->assert($y['pool_special'] === 18800.0 && $y['pool_single'] === 8600.0, 'what is left in each pool is carried forward');
+            // selling the estate car next year takes the money off the special pool
+            $db->table('money_assets')->where('id', $car)->update(['sold_on' => '2027-05-01', 'sold_for' => 15000]);
+            \AP\Modules\Money\Assets::reset();
+            $n = \AP\Modules\Money\Assets::year('2027-28');
+            $this->assert(($n['wda_special'] ?? 0) === round(3800 * 0.06, 2), 'the sale comes off the pool before the year\'s allowance');
+            // a small main pool is claimed in full
+            $db->table('money_assets')->delete();
+            $add(['name' => 'Old saw', 'kind' => 'equipment', 'bought_on' => '2026-05-01', 'cost' => 900, 'new_unused' => 0]);
+            $s->set('money.basis', 'traditional');
+            \AP\Modules\Money\TaxRules::save('2026-27', ['aia_limit' => 0] + \AP\Modules\Money\TaxRules::forYear('2026-27'));
+            \AP\Modules\Money\Assets::reset();
+            $this->assert((\AP\Modules\Money\Assets::year('2026-27')['wda_main'] ?? 0) === 900.0, 'a main pool under £1,000 is claimed in full');
+            $s->set('money.basis', 'cash');
+            \AP\Modules\Money\TaxRules::restore('2026-27');
+        });
+        return '';
+    }
+
+    public function test_the_equipment_page_and_form_and_a_car_blocks_the_mileage_rate(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $this->liveSettings();
+            $db = $this->db;
+            $get = static fn(string $p, array $q = []) => new Request('GET', $p, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $post = static fn(array $d) => new Request('POST', '/admin/money/equipment/save', [], $d, [], ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json']);
+            $c = new \AP\Modules\Money\Controllers\AssetController();
+            $empty = $c->index($get('/admin/money/equipment', ['year' => '2026-27']));
+            $this->assert($empty->status === 200 && str_contains($empty->body, 'No equipment yet') && str_contains($empty->body, 'Cash Basis'), 'the empty page explains itself');
+            $bad = $c->save($post(['name' => '', 'kind' => 'rocket', 'bought_on' => 'soon', 'cost' => 'x', 'business_percent' => '150']));
+            $errs = json_decode($bad->body, true)['errors'] ?? [];
+            $this->assert($bad->status === 422 && isset($errs['name'], $errs['kind'], $errs['bought_on'], $errs['cost'], $errs['business_percent']), 'the form checks every box');
+            $vid = (int) $db->table('money_vehicles')->insertGetId(['name' => 'Work car', 'kind' => 'car', 'ownership' => 'owned', 'method' => 'mileage', 'active' => 1, 'created_at' => '2026-05-01 00:00:00']);
+            $ok = json_decode($c->save($post(['name' => 'Work car', 'kind' => 'car', 'bought_on' => '01/05/2026', 'cost' => '12,000', 'business_percent' => '100', 'new_unused' => '0', 'co2' => '110', 'vehicle_id' => (string) $vid, 'after' => 'list']))->body, true);
+            $this->assert($ok['ok'] && (int) $db->table('money_vehicles')->where('id', $vid)->value('capital_claimed') === 1 && !in_array($vid, Mileage::mileageVehicleIds(), true), 'a car with allowances can no longer use the mileage rate');
+            \AP\Modules\Money\Assets::reset();
+            $cmp = Mileage::compare($db->table('money_vehicles')->where('id', $vid)->first(), '2026-27');
+            $this->assert($cmp['capital'] === 720.0, 'the vehicle comparison uses the real allowance (6% of 12,000): ' . $cmp['capital']);
+            $list = $c->index($get('/admin/money/equipment', ['year' => '2026-27']))->body;
+            $this->assert(str_contains($list, 'Work car') && str_contains($list, 'Special Rate Pool') && str_contains($list, '£720.00') && str_contains($list, 'data-bulk-bar'), 'the list shows the claim and the pools');
+            $aid = (int) $db->table('money_assets')->value('id');
+            $form = (new \AP\Modules\Money\Controllers\AssetController())->form($get('/admin/money/equipment/' . $aid), (string) $aid)->body;
+            $this->assert(str_contains($form, 'name="co2"') && str_contains($form, 'value="110"') && str_contains($form, 'data-date'), 'the form has the car boxes and the date picker');
+            $cat = (int) $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Tools Bought', 'hmrc_box' => 'capital', 'allowable' => 0, 'active' => 1, 'created_at' => '2026-05-01 00:00:00']);
+            $db->table('money_expenses')->insert(['expense_date' => '2026-05-02', 'title' => 'Drill', 'category_id' => $cat, 'amount' => 150, 'business_percent' => 100, 'created_at' => '2026-05-02 00:00:00', 'updated_at' => '2026-05-02 00:00:00']);
+            \AP\Modules\Money\Assets::reset();
+            $c->index($get('/admin/money/equipment', ['year' => '2026-27']));
+            $drill = $db->table('money_assets')->where('name', 'Drill')->first();
+            $del = $c->delete(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $drill['id']);
+            $this->assert($del->status === 302 && $db->table('money_assets')->where('id', (int) $drill['id'])->whereNull('deleted_at')->exists(), 'an entry made from an expense is not deleted here');
+            $c->bulk(new Request('POST', '/x', [], ['ids' => [(string) $drill['id']], 'do' => 'kind', 'value' => 'machinery'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($db->table('money_assets')->where('id', (int) $drill['id'])->value('kind') === 'machinery', 'ticked entries can change kind');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/equipment'] ?? ''), 'capital allowances'), 'the search finds Equipment');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';
@@ -2564,6 +2684,7 @@ final class MoneyTests
             View::resetSlots();
             TaxRules::reset();
             Mileage::reset();
+            \AP\Modules\Money\Assets::reset();
             $modules->boot($app, false, true);
             $app->set('auth', new FakeAuth());
             View::addNamespace('app', AP_ROOT . '/Views');

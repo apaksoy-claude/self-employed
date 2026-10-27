@@ -136,6 +136,11 @@ final class Mileage
         // As if this were the only car: the first 10,000 miles at the higher rate.
         $asRate = self::value($biz, (string) $vehicle['kind'], 0.0, $r);
         $capital = (float) $vehicle['allowance_expected'];
+        $linked = Assets::ready() ? array_column(array_filter(Assets::all(), static fn($a) => (int) $a['vehicle_id'] === $id), 'id') : [];
+        if ($linked) {
+            $byAsset = Assets::schedule()['assets'];
+            $capital = round(array_sum(array_map(static fn($aid) => (float) ($byAsset[(int) $aid][$year] ?? 0), $linked)), 2);
+        }
         $actualTotal = round($actual + $capital, 2);
         return ['year' => $year, 'trips' => count($trips), 'business_miles' => round($biz, 1), 'all_miles' => round($all, 1), 'business_percent' => $all > 0 ? round($biz / $all * 100, 1) : null,
             'mileage_claim' => $asRate, 'actual_costs' => round($actual, 2), 'capital' => $capital, 'actual_total' => $actualTotal, 'kept' => round($keep, 2),

@@ -38,7 +38,7 @@ final class Money
         'goods' => 'Goods For Resale', 'subcontractors' => 'Subcontractors', 'wages' => 'Wages', 'car_van_travel' => 'Car and Travel', 'premises' => 'Premises',
         'repairs' => 'Repairs', 'phone_stationery' => 'Phone and Office', 'advertising' => 'Advertising', 'interest' => 'Loan Interest', 'bank_charges' => 'Bank Charges',
         'bad_debts' => 'Bad Debts', 'professional_fees' => 'Professional Fees', 'depreciation' => 'Depreciation', 'home_use' => 'Use Of Home', 'other' => 'Other Costs',
-        'capital' => 'Equipment', 'pension' => 'Pension', 'not_business' => 'Personal',
+        'capital' => 'Equipment', 'pension' => 'Pension', 'not_business' => 'Personal', 'capital_claims' => 'Equipment Claims', 'home_covered' => 'Covered By Flat Rate', 'mileage_covered' => 'Covered By Mileage Rate',
     ];
 
     public static function db(): DB
@@ -252,6 +252,13 @@ final class Money
             $costs += $mileage;
             $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $mileage;
         }
+        Assets::sync(true);
+        $equip = Assets::claimBetween($from, $to);
+        if (abs($equip) > 0.004) {
+            $boxes['capital_claims'] = round(($boxes['capital_claims'] ?? 0) + $equip, 2);
+            $costs += $equip;
+            $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $equip;
+        }
         $home = HomeUse::claimBetween($from, $to);
         if ($home > 0) {
             $boxes['home_use'] = round(($boxes['home_use'] ?? 0) + $home, 2);
@@ -270,7 +277,7 @@ final class Money
         usort($streams, static fn($a, $b) => $b['income'] <=> $a['income']);
         arsort($boxes);
         [$owed, $owedCount] = self::owed();
-        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'home_flat' => $home, 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
+        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'home_flat' => $home, 'equipment' => $equip, 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
             'not_costs' => $notCosts, 'unfiled' => round($unfiled, 2), 'streams' => $streams, 'owed' => $owed, 'owed_count' => $owedCount,
             'counts' => ['income' => $inc->count(), 'expenses' => $nExp]];
     }

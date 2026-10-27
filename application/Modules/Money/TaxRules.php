@@ -5,7 +5,7 @@ namespace AP\Modules\Money;
 
 /**
  * The tax rates and rules of each tax year: Income Tax (England, Wales and Northern Ireland, and Scotland), National Insurance,
- * allowances, simplified expenses and thresholds. Years HMRC has published come built in; any year can be changed on
+ * allowances, capital allowances, simplified expenses and thresholds. Years HMRC has published come built in; any year can be changed on
  * Settings > Tax Rules and the change is kept for that year only. A year with no rates yet uses the latest year before it,
  * and says so, until its own rates are copied in and checked.
  *
@@ -23,6 +23,7 @@ final class TaxRules
                 ['name' => 'Higher', 'upto' => 62430, 'rate' => 42], ['name' => 'Advanced', 'upto' => 125140, 'rate' => 45], ['name' => 'Top', 'upto' => '', 'rate' => 48]],
             'c4_lower' => 12570, 'c4_upper' => 50270, 'c4_main' => 6, 'c4_upper_rate' => 2, 'c2_spt' => 6725, 'c2_weekly' => 3.45,
             'trading_allowance' => 1000, 'poa_limit' => 1000, 'poa_source_share' => 80, 'mtd_threshold' => 0,
+            'aia_limit' => 1000000, 'wda_main' => 18, 'wda_special' => 6, 'fya_main' => 0, 'car_co2_main' => 50, 'car_zero_fya' => 100, 'small_pool' => 1000,
             'mile_high' => 45, 'mile_low' => 25, 'mile_threshold' => 10000, 'mile_moto' => 24,
             'home_rates' => [['from' => 25, 'to' => 50, 'monthly' => 10], ['from' => 51, 'to' => 100, 'monthly' => 18], ['from' => 101, 'to' => '', 'monthly' => 26]],
         ],
@@ -32,6 +33,7 @@ final class TaxRules
                 ['name' => 'Higher', 'upto' => 62430, 'rate' => 42], ['name' => 'Advanced', 'upto' => 125140, 'rate' => 45], ['name' => 'Top', 'upto' => '', 'rate' => 48]],
             'c4_lower' => 12570, 'c4_upper' => 50270, 'c4_main' => 6, 'c4_upper_rate' => 2, 'c2_spt' => 6845, 'c2_weekly' => 3.50,
             'trading_allowance' => 1000, 'poa_limit' => 1000, 'poa_source_share' => 80, 'mtd_threshold' => 0,
+            'aia_limit' => 1000000, 'wda_main' => 18, 'wda_special' => 6, 'fya_main' => 40, 'car_co2_main' => 50, 'car_zero_fya' => 100, 'small_pool' => 1000,
             'mile_high' => 45, 'mile_low' => 25, 'mile_threshold' => 10000, 'mile_moto' => 24,
             'home_rates' => [['from' => 25, 'to' => 50, 'monthly' => 10], ['from' => 51, 'to' => 100, 'monthly' => 18], ['from' => 101, 'to' => '', 'monthly' => 26]],
         ],
@@ -41,6 +43,7 @@ final class TaxRules
                 ['name' => 'Higher', 'upto' => 62430, 'rate' => 42], ['name' => 'Advanced', 'upto' => 125140, 'rate' => 45], ['name' => 'Top', 'upto' => '', 'rate' => 48]],
             'c4_lower' => 12570, 'c4_upper' => 50270, 'c4_main' => 6, 'c4_upper_rate' => 2, 'c2_spt' => 7105, 'c2_weekly' => 3.65,
             'trading_allowance' => 1000, 'poa_limit' => 1000, 'poa_source_share' => 80, 'mtd_threshold' => 50000,
+            'aia_limit' => 1000000, 'wda_main' => 14, 'wda_special' => 6, 'fya_main' => 40, 'car_co2_main' => 50, 'car_zero_fya' => 100, 'small_pool' => 1000,
             'mile_high' => 55, 'mile_low' => 25, 'mile_threshold' => 10000, 'mile_moto' => 24,
             'home_rates' => [['from' => 25, 'to' => 50, 'monthly' => 10], ['from' => 51, 'to' => 100, 'monthly' => 18], ['from' => 101, 'to' => '', 'monthly' => 26]],
         ],
@@ -54,6 +57,10 @@ final class TaxRules
         'c4_upper_rate' => ['ni', 'Class 4 Rate Above The Upper Limit (%)'], 'c2_spt' => ['ni', 'Class 2 Small Profits Threshold (£)'], 'c2_weekly' => ['ni', 'Voluntary Class 2 A Week (£)'],
         'trading_allowance' => ['allow', 'Trading Allowance (£)'], 'poa_limit' => ['allow', 'No Payments On Account When The Bill Is Under (£)'],
         'poa_source_share' => ['allow', 'Or When At Least This Share Was Taken Off At Source (%)'], 'mtd_threshold' => ['allow', 'Making Tax Digital Applies Above Income Of (£, 0 When Not In Force)'],
+        'aia_limit' => ['capital', 'Annual Investment Allowance A Year (£)'], 'wda_main' => ['capital', 'Main Pool Writing Down Allowance (%)'],
+        'wda_special' => ['capital', 'Special Rate Pool Writing Down Allowance (%)'], 'fya_main' => ['capital', 'First Year Allowance On New Equipment Over The Limit (%, from 1 January 2026)'],
+        'car_co2_main' => ['capital', 'Cars Up To This CO2 Go In The Main Pool (g/km)'], 'car_zero_fya' => ['capital', 'First Year Allowance On New Zero-Emission Cars (%)'],
+        'small_pool' => ['capital', 'Claim A Whole Pool When It Is Under (£)'],
         'mile_high' => ['simple', 'Cars and Vans, First Miles (Pence A Mile)'], 'mile_low' => ['simple', 'Cars and Vans, After That (Pence A Mile)'],
         'mile_threshold' => ['simple', 'Business Miles A Year At The First Rate'], 'mile_moto' => ['simple', 'Motorcycles (Pence A Mile)'],
     ];

@@ -425,3 +425,5 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .tx-region { display: inline-block; margin-left: .5rem; font-size: .7rem; font-weight: 700; padding: .15rem .55rem; border-radius: 999px; background: #dfe8ff; color: #1f46b8; vertical-align: middle; }
 [data-bs-theme="dark"] .tx-timeline li, [data-bs-theme="dark"] .tx-compare > div { background: var(--ap-card); }
 @media (max-width: 575.98px) { .tx-compare { grid-template-columns: 1fr; } }
+.mn-form h3.mn-sub { font-size: .95rem; font-weight: 700; margin: 1.1rem 0 .55rem; }
+.mn-fields[hidden] { display: none !important; }

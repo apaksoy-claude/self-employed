@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.40.0 - Equipment and capital allowances
+Update package: install from System > Updates, then press "Finish update" (adds the equipment table).
+- New page: Money > Equipment. A register of tools, computers, machinery, furniture, vans, motorcycles and cars bought to keep. Every expense filed to "Equipment and vehicles bought" appears there by itself and follows its expense, so nothing is claimed twice. You can also add things by hand, with the date, cost, business share, whether it was new, CO2 for cars, the vehicle it belongs to, and when it was sold and for how much.
+- Settings > Money > Your Tax: How Your Accounts Are Kept. Cash basis (the starting choice for most sole traders) claims equipment in full in the year it is bought, by its business share, and a sale later counts as income. Traditional accounting uses the Annual Investment Allowance up to the yearly limit, the 40% first year allowance on new equipment above it (from 1 January 2026), and the main and special rate pools. Cars always get capital allowances: by CO2 into the main or special rate pool, 100% for new zero-emission cars, and their own pool when used privately. Sales come off the pools, with balancing allowances and charges.
+- The claims count everywhere profit does: the dashboard, quarter and month cards, the tax estimate, reports and the accountant pack (as "Equipment Claims").
+- The Equipment page shows each tax year's claim, how it adds up, and what is left in each pool, with filters that are remembered, ticked rows that can change kind, and edit and delete on every row.
+- A car or van linked to a vehicle in the mileage log counts as having had allowances, so it can no longer use the mileage rate (HMRC's rule), and the vehicle comparison uses the real allowance.
+- Settings > Tax Rules has a new Equipment and Capital Allowances card for each year: the Annual Investment Allowance, the main and special pool rates (main pool 14% from 2026-27, 18% before), first year allowances, the car CO2 limit and the small pool limit.
+- Tests: Money 60, core 65.
+
 ## 1.39.0 - Tax rules for each tax year
 Update package: install from System > Updates, then press "Finish update" (adds one small table; any rates you changed before are kept for this tax year).
 - New page: Settings > Tax Rules. Each tax year has its own rates: Income Tax for England, Wales and Northern Ireland, Scottish bands, Class 4 and Class 2 National Insurance, the trading allowance, payments on account, the Making Tax Digital limit, mileage rates and the working-from-home flat rate. 2024-25, 2025-26 and 2026-27 are built in. The years are a list on the left; lists such as the Scottish bands are rows you can add, remove and drag. Save works in the background. Add The Next Year copies the newest year to check, and Back To Built-In undoes your changes. A year with no rates of its own uses the year before and says so.

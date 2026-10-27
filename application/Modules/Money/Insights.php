@@ -42,6 +42,10 @@ final class Insights
         foreach (HomeUse::claims() as $c) {
             $exp[] = [$c['date'], $c['amount'], true, 'home_use', 0, 0];
         }
+        Assets::sync(true);
+        foreach (Assets::schedule()['claims'] as $c) {
+            $exp[] = [$c['date'], $c['amount'], true, 'capital_claims', 0, 0];
+        }
         return ['inc' => $inc, 'exp' => $exp];
     }
 

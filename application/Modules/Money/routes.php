@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use AP\Core\Middleware\Csrf;
 use AP\Core\Router;
+use AP\Modules\Money\Controllers\AssetController;
 use AP\Modules\Money\Controllers\ButtonController;
 use AP\Modules\Money\Controllers\CardStyleController;
 use AP\Modules\Money\Controllers\CategoryController;
@@ -57,6 +58,7 @@ return static function (Router $r): void {
         $r->get('/reports/email', [ReportController::class, 'emailForm'], 'reports.email');
         $r->get('/reports/export/{what:[a-z]+}', [ReportController::class, 'export'], 'reports.export');
         $r->get('/receipts', [ReceiptController::class, 'index'], 'receipts');
+        $r->get('/equipment', [AssetController::class, 'index'], 'equipment');
         $r->get('/files/{id:\d+}', [FileController::class, 'show'], 'file');
 
         $r->get('/expenses', [ExpenseController::class, 'index'], 'expenses');
@@ -122,6 +124,11 @@ return static function (Router $r): void {
 
 
             $r->post('/tax/figures', [TaxController::class, 'savePersonal'], 'tax.figures');
+            $r->get('/equipment/new', [AssetController::class, 'form'], 'equipment.new');
+            $r->get('/equipment/{id:\d+}', [AssetController::class, 'form'], 'equipment.edit');
+            $r->post('/equipment/save', [AssetController::class, 'save'], 'equipment.save');
+            $r->post('/equipment/bulk', [AssetController::class, 'bulk'], 'equipment.bulk');
+            $r->post('/equipment/{id:\d+}/delete', [AssetController::class, 'delete'], 'equipment.delete');
             $r->get('/setup', [SetupController::class, 'index'], 'setup');
             $r->post('/setup/apply', [SetupController::class, 'apply'], 'setup.apply');
             $r->post('/setup/dismiss', [SetupController::class, 'dismiss'], 'setup.dismiss');

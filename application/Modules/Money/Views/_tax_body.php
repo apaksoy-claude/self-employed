@@ -104,7 +104,7 @@ $amt = static fn($v): string => (float) $v > 0 ? number_format((float) $v, 2, '.
         <ul class="mn-bullets">
             <li>Savings interest and dividends.</li>
             <li>Student loan repayments and the High Income Child Benefit Charge.</li>
-            <li>Equipment you bought. It is left out of costs until you decide how to claim it.</li>
+            <li>Anything not in your records. Equipment bought is included through the Equipment page.</li>
         </ul>
         <p class="mn-foot">The rates of each tax year are on Settings > Tax Rules. Where you pay tax and the trading allowance are in Settings > Money.</p>
     </section>
