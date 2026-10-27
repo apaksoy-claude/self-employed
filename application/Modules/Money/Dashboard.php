@@ -72,7 +72,8 @@ final class Dashboard
             'recentMonths' => array_slice($months, -$monthsShown), 'monthsShown' => $monthsShown,
             'last12' => $last12, 'calendar' => Insights::totals($data, $calFrom, $today), 'quarters' => $quarters, 'invoices' => Insights::invoices($today),
             'deadlines' => Insights::deadlines($today), 'noReceipt' => $noReceipt, 'receiptOver' => $over, 'uncat' => $uncat, 'recent' => $recent,
-            'ins' => $data, 'cats' => Money::options('money_categories', 'expense'), 'note' => (string) setting('money.note', ''), 'canEdit' => can('money.edit'), 'relief' => $relief];
+            'ins' => $data, 'cats' => Money::options('money_categories', 'expense'), 'note' => (string) setting('money.note', ''), 'canEdit' => can('money.edit'), 'relief' => $relief,
+            'setupBanner' => can('money.edit') && Setup::saved() === [] && (string) setting('money.setup_dismissed', '') === ''];
     }
 
     /** The dashboard as HTML, for the top of the admin home page. */

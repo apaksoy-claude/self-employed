@@ -43,3 +43,7 @@ New in 1.2 for module authors:
 - `search` adds results to the top-bar search: `['things' => ['label' => 'Things', 'icon' => 'fa-box', 'permission' => 'things.view', 'handler' => fn(string $term, int $limit): array => [['title' => .., 'subtitle' => .., 'url' => ..]]]]`.
 - Dashboard widgets with `'type' => 'stat'` and a `stat` callback returning `value`, `label`, `note`, `url` and `tone` show as number boxes.
 - Admin views can fill the sections `actions` (buttons next to the page title) and `subtitle` (a line under the breadcrumbs).
+
+New in 1.37 for module authors:
+- `install_step` adds a page to the installer after the admin account: `['key' => .., 'label' => .., 'order' => .., 'view' => 'module::view', 'data' => fn(array $state): array, 'save' => fn(Request $r, array $state): array{errors, value}, 'summary' => fn(array $value): string, 'apply' => fn(DB $db, Settings $settings, array $value, array $state): array]`. The answers are used once the tables exist, and the module is kept on.
+- Menu items take `when` (`fn(): bool`): the item is left out of the menu and the admin search while it gives false, for features that can be switched off.

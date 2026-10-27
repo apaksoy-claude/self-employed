@@ -10,7 +10,7 @@ $this->extend('admin::layout');
     <div class="mn-head"><div><p>Add your own fields to any form, for example a job number on expenses or a purchase order on invoices. They appear on the form, are saved with the record, and can be shown as a column in the list.</p></div></div>
     <div class="mn-menupage">
         <nav class="mn-sidenav" aria-label="Which form">
-            <?php foreach (CustomFields::ENTITIES as $k => $e): ?>
+            <?php foreach (CustomFields::ENTITIES as $k => $e): if (in_array($k, ['trip', 'vehicle'], true) && !\AP\Modules\Money\Setup::usesVehicles() && $counts[$k] === 0 && $entity !== $k) { continue; } ?>
                 <a class="<?= $entity === $k ? 'is-on' : '' ?>" href="<?= e(admin_url('money/fields?for=' . $k)) ?>"><span><?= e($e[0]) ?></span><?php if ($counts[$k] > 0): ?><em><?= (int) $counts[$k] ?></em><?php endif; ?></a>
             <?php endforeach; ?>
         </nav>

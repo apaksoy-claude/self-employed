@@ -23,7 +23,9 @@ $rep = old('recurring', $e['recurring'] ?? 0);
                 <?= Fields::select('category_id', 'Category', $cats, $e['category_id'] ?? 0, ['none' => 'No category', 'col' => 'is-half']) ?>
                 <?= Fields::select('stream_id', 'Stream', $streams, $e['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>
                 <?= Fields::select('contact_id', 'Paid to', $contacts, $e['contact_id'] ?? 0, ['none' => 'Nobody in particular', 'col' => 'is-third']) ?>
+                <?php if (\AP\Modules\Money\Setup::usesVehicles() || (int) ($e['vehicle_id'] ?? 0) > 0): ?>
                 <?= Fields::select('vehicle_id', 'Vehicle', $vehicles, $e['vehicle_id'] ?? 0, ['none' => 'None', 'col' => 'is-third']) ?>
+                <?php else: ?><input type="hidden" name="vehicle_id" value="0"><?php endif; ?>
                 <?= Fields::select('payment_method', 'Paid With', Money::payOptions('money.paid_with', (string) ($e['payment_method'] ?? '')), $e['payment_method'] ?? '', ['none' => 'Not Said', 'none_value' => '', 'col' => 'is-third']) ?>
                 <?= Fields::area('description', 'Notes', $e['description'] ?? '') ?>
             </div>

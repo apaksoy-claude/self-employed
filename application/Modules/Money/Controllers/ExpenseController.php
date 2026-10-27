@@ -121,7 +121,7 @@ final class ExpenseController
         $fields = [
             ['name' => 'category', 'label' => 'Category', 'options' => $pick($cats, 'No Category', 'All Categories'), 'value' => $cat],
             ['name' => 'stream', 'label' => 'Income Stream', 'options' => $pick($streams, 'No Stream', 'All Streams'), 'value' => $stream],
-            ['name' => 'vehicle', 'label' => 'Vehicle', 'options' => $pick($vehicles, 'No Vehicle', 'All Vehicles'), 'value' => $vehicle],
+            ...(\AP\Modules\Money\Setup::usesVehicles() || $vehicle !== 0 ? [['name' => 'vehicle', 'label' => 'Vehicle', 'options' => $pick($vehicles, 'No Vehicle', 'All Vehicles'), 'value' => $vehicle]] : []),
             ['name' => 'contact', 'label' => 'Paid To', 'options' => $pick($contacts, 'Nobody Named', 'Anyone'), 'value' => $contact],
             ['name' => 'method', 'label' => 'Paid By', 'options' => ['' => 'Any Way'] + $methods, 'value' => $method],
             ['label' => 'Amount', 'min' => ['name' => 'min', 'value' => $request->string('min')], 'max' => ['name' => 'max', 'value' => $request->string('max')]],

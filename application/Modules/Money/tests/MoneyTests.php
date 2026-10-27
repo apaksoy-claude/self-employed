@@ -42,6 +42,9 @@ use AP\Modules\Money\Controllers\ReportController;
 use AP\Modules\Money\Controllers\TaxController;
 use AP\Modules\Money\Import\PdfText;
 use AP\Modules\Money\Reports;
+use AP\Modules\Money\Setup;
+use AP\Modules\Money\Trades;
+use AP\Modules\Money\Controllers\SetupController;
 use AP\Tests\FakeAuth;
 use RuntimeException;
 use Throwable;
@@ -2188,6 +2191,244 @@ final class MoneyTests
     /* -------------------------------------------------------------- */
 
     /** Runs $fn with the app wired to a Money database, a session, a fake signed-in user and the real views. */
+    /* -------------------------------------------------------------- business setup and the installer's Your Business step */
+
+    public function test_trade_packs_file_every_category_to_a_real_box_and_plan_in_a_fixed_order(): string
+    {
+        $all = Trades::PACKS + ['vehicle' => Trades::VEHICLE, 'home' => Trades::HOME, 'base' => Trades::BASE];
+        foreach ($all as $key => $p) {
+            $names = [];
+            foreach ((array) ($p['categories'] ?? []) as $c) {
+                $this->assert(isset(Money::HMRC_BOXES[$c[1]]), "$key: {$c[0]} is filed to an unknown box {$c[1]}");
+                $this->assert(!isset($names[mb_strtolower($c[0])]), "$key: {$c[0]} is listed twice");
+                $this->assert(!preg_match('/\bAnd\b/', (string) $c[0]), "$key: {$c[0]} should write 'and' in lower case");
+                $names[mb_strtolower($c[0])] = true;
+            }
+            foreach ((array) ($p['streams'] ?? []) as [$n, $colour]) {
+                $this->assert(preg_match('/^#[0-9a-f]{6}$/i', $colour) === 1, "$key: stream $n has a bad colour");
+            }
+            foreach ((array) ($p['cards'] ?? []) as $card) {
+                $this->assert(isset($names[mb_strtolower((string) $card['category'])]), "$key: the card {$card['title']} needs a category the pack adds");
+            }
+        }
+        $this->assert(count(Trades::PACKS) === 8, 'eight kinds of work are offered');
+        // picked trades come first in the order of the packs, whatever order they were asked in
+        $plan = Trades::plan(['seller', 'driver', 'nonsense'], true, true);
+        $names = array_column($plan['categories'], 'name');
+        $this->assert($names[0] === 'Fuel' && array_search('Stock Bought For Resale', $names, true) > array_search('Car Accessories', $names, true), 'driver costs come before seller costs');
+        $this->assert(count($names) === count(array_unique(array_map('mb_strtolower', $names))), 'nothing is listed twice across packs');
+        $fuel = $plan['categories'][0];
+        $this->assert($fuel['group'] === 'Driver Or Courier', 'a cost shared with the vehicle list belongs to the trade that comes first');
+        $byName = array_column($plan['categories'], null, 'name');
+        $this->assert($byName['Parking and Tolls']['with_mileage'] === 1 && $byName['Fuel']['with_mileage'] === 0, 'parking stays claimable with the mileage rate, fuel does not');
+        $this->assert($byName['Pension Payments']['allowable'] === 0 && $byName['Equipment Bought']['allowable'] === 0 && $byName['Personal Spending']['allowable'] === 0, 'pension, equipment and personal spending never come off profit');
+        $this->assert(isset($byName['Home Broadband']) && $byName['Home Broadband']['group'] === 'Working From Home', 'working from home adds household bills');
+        $this->assert(in_array('Platform Payout', $plan['paid_by'], true) && in_array('Marketplace Payout', $plan['paid_by'], true) && in_array('Fuel Card', $plan['paid_with'], true), 'ways of paying come from the trades');
+        $c = array_column(Trades::plan(['consultant'], false, false)['categories'], null, 'name');
+        $this->assert($c['Client Entertaining']['allowable'] === 0, 'client entertaining is filed but not taken off profit');
+        $this->assert(!isset(array_column(Trades::plan(['freelancer'], false, false)['categories'], null, 'name')['Fuel']), 'no vehicle costs without a vehicle');
+        // dashboard: invoice card first for invoiced work, left out for payout work, plus the trade's own cards
+        $types = static fn(array $trades): array => array_column(Trades::layout($trades), 'type');
+        $this->assert(!in_array('invoices', $types(['driver']), true) && in_array('metric', $types(['driver']), true), 'a driver gets no invoice card but a fuel card');
+        $this->assert(in_array('invoices', $types(['freelancer']), true) && in_array('invoices', $types(['driver', 'freelancer']), true), 'invoiced work gets the invoice card');
+        foreach (Trades::layout(array_keys(Trades::PACKS)) as $w) {
+            $this->assert($w['type'] === 'metric' || isset(Widgets::builtin()[$w['type']]), 'unknown card ' . $w['type']);
+        }
+        $this->assert(count(array_filter(Trades::layout(array_keys(Trades::PACKS)), static fn($w) => $w['type'] === 'metric')) <= 3, 'at most three cards of their own');
+        $this->assert(Trades::names(['driver', 'seller', 'beauty']) === 'Driver Or Courier, Retail Or Online Seller and Hair and Beauty', 'names read as a sentence');
+        // the browser builds exactly the same plan for the preview
+        $node = trim((string) @shell_exec('command -v node 2>/dev/null'));
+        if ($node === '') {
+            return 'browser plan not compared (node is not installed here)';
+        }
+        $data = Setup::planData(['categories' => [], 'streams' => [], 'paid_by' => [], 'paid_with' => []]);
+        $cases = [[['driver'], true, false], [['seller', 'driver'], true, true], [['freelancer', 'consultant'], false, true], [['other'], false, false], [[], false, false], [array_keys(Trades::PACKS), true, true]];
+        $script = $this->tmp . '/plan.js';
+        file_put_contents($script, 'var window = {}; var document = { readyState: "complete", querySelectorAll: function () { return []; }, addEventListener: function () {} };'
+            . file_get_contents(AP_BASE . '/assets/js/money-setup.js')
+            . ';var data = ' . $data . '; var cases = ' . json_encode($cases) . ';'
+            . 'process.stdout.write(JSON.stringify(cases.map(function (c) { var p = window.apSetupPlan(data, c[0], c[1], c[2]); return { c: p.categories.map(function (x) { return x.name + "|" + x.box + "|" + (x.cost ? 1 : 0) + "|" + x.group; }), s: p.streams.map(function (x) { return x.name; }), b: p.paid_by, w: p.paid_with }; })));');
+        $out = json_decode((string) shell_exec(escapeshellarg($node) . ' ' . escapeshellarg($script) . ' 2>&1'), true);
+        $this->assert(is_array($out) && count($out) === count($cases), 'the browser plan could not be run');
+        foreach ($cases as $i => [$trades, $veh, $home]) {
+            $p = Trades::plan($trades, $veh, $home);
+            $php = ['c' => array_map(static fn($x) => $x['name'] . '|' . $x['box'] . '|' . $x['allowable'] . '|' . $x['group'], $p['categories']), 's' => array_column($p['streams'], 'name'), 'b' => $p['paid_by'], 'w' => $p['paid_with']];
+            $this->assert($php === $out[$i], 'the preview in the browser differs from what is added, case ' . $i . ': ' . json_encode(array_diff($php['c'], $out[$i]['c'] ?? [])));
+        }
+        return count($cases) . ' plans match in PHP and the browser';
+    }
+
+    public function test_business_setup_adds_only_what_is_new_and_can_run_again(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $db = $this->db;
+            $s = $this->liveSettings();
+            $now = '2026-10-27 10:00:00';
+            $db->table('money_categories')->insert(['kind' => 'expense', 'name' => 'fuel', 'hmrc_box' => 'other', 'allowable' => 1, 'sort_order' => 1, 'active' => 1, 'created_at' => $now]);
+            $db->table('money_streams')->insert(['name' => 'Private bookings', 'colour' => '#000000', 'sort_order' => 1, 'active' => 1, 'created_at' => $now]);
+            $s->set('money.paid_by', [['label' => 'Cash'], ['label' => 'Cheque']]);
+            $choice = ['mode' => 'ready', 'trades' => ['driver'], 'vehicle' => true, 'home' => true, 'dashboard' => true,
+                'skip' => ['categories' => ['tyres'], 'streams' => [], 'paid_by' => ['card'], 'paid_with' => []], 'business' => ['name' => 'Kim Cabs', 'email' => 'kim@example.com']];
+            $plan = Trades::plan(['driver'], true, true);
+            $r = Setup::apply($db, $s, $choice, 1);
+            $this->assert($r['categories'] === count($plan['categories']) - 2, 'every category but the existing one and the unticked one is added: ' . $r['categories']);
+            $this->assert(!$db->table('money_categories')->where('name', 'Tyres')->exists() && $db->table('money_categories')->where('name', 'fuel')->count() === 1
+                && !$db->table('money_categories')->where('name', 'Fuel')->exists(), 'an existing category (any capitals) is kept as it was and an unticked one is left out');
+            $pt = $db->table('money_categories')->where('name', 'Parking and Tolls')->first();
+            $this->assert($pt && $pt['hmrc_box'] === 'car_van_travel' && (int) $pt['with_mileage'] === 1 && (int) $pt['allowable'] === 1, 'parking is filed with the mileage tick');
+            $this->assert((int) $db->table('money_categories')->where('name', 'Pension Payments')->value('allowable') === 0, 'pension is not a cost');
+            $this->assert($r['streams'] === 1 && $db->table('money_streams')->count() === 2, 'only the new stream is added');
+            $paidBy = array_column(\AP\Core\Settings::rows(['fields' => ['label' => []]], $s->get('money.paid_by')), 'label');
+            $this->assert($paidBy === ['Cash', 'Cheque', 'Platform Payout', 'Bank Transfer'], 'ways of getting paid are added to the end, minus the unticked one: ' . implode(', ', $paidBy));
+            $this->assert($s->get('money.feature_vehicles') === true && $s->get('money.biz_name') === 'Kim Cabs' && $s->get('money.biz_email') === 'kim@example.com', 'vehicles on and business details saved');
+            $saved = Setup::saved($s);
+            $this->assert($saved['trades'] === ['driver'] && $saved['vehicle'] === true && $saved['home'] === true && $saved['mode'] === 'ready', 'the answers are remembered');
+            $layout = json_decode((string) $s->get(Widgets::SETTING), true);
+            $types = array_column($layout, 'type');
+            $fuelId = (int) $db->table('money_categories')->where('name', 'fuel')->value('id');
+            $metric = array_values(array_filter($layout, static fn($w) => $w['type'] === 'metric'))[0] ?? [];
+            $this->assert(!in_array('invoices', $types, true) && ($metric['category_id'] ?? 0) === $fuelId && ($metric['title'] ?? '') === 'Fuel This Month', 'the dashboard suits a driver and the fuel card uses the fuel category');
+            // again: nothing twice
+            $again = Setup::apply($db, $s, $choice, 1);
+            $this->assert($again['categories'] === 0 && $again['streams'] === 0 && $again['paid_by'] === 0, 'running it again adds nothing');
+            $this->assert(str_contains(Setup::result($again), 'Nothing new to add'), 'and says so');
+            // another trade later, without the dashboard
+            $r2 = Setup::apply($db, $s, ['mode' => 'ready', 'trades' => ['seller'], 'vehicle' => true, 'home' => false, 'dashboard' => false, 'skip' => []], 1);
+            $this->assert($r2['categories'] > 0 && !$r2['dashboard'] && Setup::saved($s)['trades'] === ['driver', 'seller'] && Setup::saved($s)['home'] === true, 'a second trade is added and remembered with the first');
+            $this->assert(json_decode((string) $s->get(Widgets::SETTING), true) === $layout, 'the dashboard is left alone when not ticked');
+            // a fresh start adds nothing but keeps the answers
+            $before = $db->table('money_categories')->count();
+            $f = Setup::apply($db, $s, ['mode' => 'fresh', 'trades' => ['driver'], 'vehicle' => false, 'home' => false, 'dashboard' => true, 'skip' => []], 1);
+            $this->assert($f['categories'] === 0 && $db->table('money_categories')->count() === $before && $s->get('money.feature_vehicles') === false, 'fresh start adds nothing and hides vehicles');
+            $this->assert(str_starts_with(Setup::describe(['mode' => 'fresh', 'vehicle' => false]), 'Fresh start') && str_contains(Setup::describe(['mode' => 'ready', 'trades' => ['driver'], 'vehicle' => true, 'dashboard' => true]), 'Ready for Driver Or Courier'), 'the review sentence');
+            $this->assert(Setup::validate(['mode' => 'ready', 'trades' => []]) !== [] && Setup::validate(['mode' => 'fresh', 'trades' => []]) === []
+                && isset(Setup::validate(['mode' => 'fresh', 'business' => ['email' => 'nope']])['biz_email']), 'a ready start needs a kind of work, and the email is checked');
+        });
+        return '';
+    }
+
+    public function test_business_setup_page_works_in_the_background_and_the_banner_can_be_put_off(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $get = static fn(string $p) => new Request('GET', $p, [], [], [], ['HTTP_HOST' => 'localhost']);
+            $post = static fn(string $p, array $data, bool $json = true) => new Request('POST', $p, [], $data, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest'] : []));
+            $dash = \AP\Modules\Money\Dashboard::html();
+            $this->assert(str_contains($dash, 'data-su-banner') && str_contains($dash, 'money/setup'), 'the dashboard offers setup while it has never been run');
+            $page = (new SetupController())->index($get('/admin/money/setup'));
+            $this->assert($page->status === 200 && str_contains($page->body, 'What Kind Of Work Do You Do?') && substr_count($page->body, 'name="trades[]"') === 8, 'the page shows the eight kinds of work');
+            $this->assert(str_contains($page->body, 'data-plan="{') && str_contains($page->body, 'data-su-ajax') && !str_contains($page->body, 'name="mode" value="fresh"'), 'the page has the plan for the preview and sends in the background');
+            $none = (new SetupController())->apply($post('/admin/money/setup/apply', ['trades' => []]));
+            $this->assert($none->status === 422 && str_contains($none->body, 'Pick at least one kind of work'), 'nothing picked gives a clear message');
+            $res = (new SetupController())->apply($post('/admin/money/setup/apply', ['trades' => ['freelancer'], 'vehicle' => '0', 'home' => '1', 'dashboard' => '1', 'skip_cat' => ['co-working space']]));
+            $j = json_decode($res->body, true);
+            $this->assert($res->status === 200 && $j['ok'] === true && str_contains((string) $j['message'], 'Added') && in_array('computer and equipment', $j['existing']['categories'], true), 'it adds and sends back what now exists');
+            $this->assert(!$this->db->table('money_categories')->where('name', 'Co-Working Space')->exists() && $this->db->table('money_categories')->where('name', 'Home Broadband')->exists(), 'unticked left out, home costs in');
+            $this->assert(!str_contains(\AP\Modules\Money\Dashboard::html(), 'data-su-banner'), 'the banner goes once setup has run');
+            $again = (new SetupController())->index($get('/admin/money/setup'));
+            $this->assert(str_contains($again->body, 'Set up so far for') && preg_match('/value="freelancer" checked/', $again->body) === 1, 'the page remembers what was set up');
+            // the banner can be put off without running setup
+            $s->set(Setup::SETTING, '');
+            $this->assert(str_contains(\AP\Modules\Money\Dashboard::html(), 'data-su-banner'), 'banner back while setup is not recorded');
+            $d = (new SetupController())->dismiss($post('/admin/money/setup/dismiss', []));
+            $this->assert($d->status === 200 && json_decode($d->body, true)['ok'] === true && !str_contains(\AP\Modules\Money\Dashboard::html(), 'data-su-banner'), 'Not Now hides it for good');
+            // a normal form post still works without the page script
+            $plain = (new SetupController())->apply($post('/admin/money/setup/apply', ['trades' => ['beauty']], false));
+            $this->assert($plain->status === 302, 'without the script the page reloads with a message');
+            // the menu item and the search find it
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(isset($items['money/setup']) && str_contains((string) $items['money/setup'], 'driver') && str_contains((string) $items['money/setup'], 'freelancer'), 'Business Setup is in the menu and the top-bar search');
+        });
+        return '';
+    }
+
+    public function test_vehicles_and_mileage_can_be_switched_off_without_losing_anything(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $get = static fn(string $p, array $q = []) => new Request('GET', $p, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $urls = static fn(): array => array_column(app(\AP\Core\ModuleManager::class)->menu(), 'url');
+            $this->assert(in_array('money/vehicles', $urls(), true) && in_array('money/trips', $urls(), true), 'shown by default, so existing sites do not change');
+            $s->set('money.feature_vehicles', '0');
+            $this->assert(!in_array('money/vehicles', $urls(), true) && !in_array('money/trips', $urls(), true) && in_array('money/expenses', $urls(), true), 'switched off: Vehicles and Mileage Log leave the menu');
+            $form = (new ExpenseController())->form($get('/admin/money/expenses/new'))->body;
+            $this->assert(!str_contains($form, 'id="f_vehicle_id"') && str_contains($form, '<input type="hidden" name="vehicle_id" value="0">'), 'the vehicle box leaves the expense form');
+            $list = (new ExpenseController())->index($get('/admin/money/expenses', ['year' => 'all']))->body;
+            $this->assert(!str_contains($list, 'All Vehicles'), 'and the expense filter');
+            $rep = (new \AP\Modules\Money\Controllers\ScheduledReportController())->form($get('/admin/money/scheduled-reports/new'))->body;
+            $this->assert(!str_contains($rep, 'value="mileage"') && !str_contains($rep, 'name="f_vehicle_id"'), 'scheduled reports stop offering mileage');
+            $fields = (new \AP\Modules\Money\Controllers\CustomFieldController())->index($get('/admin/money/fields'))->body;
+            $this->assert(!str_contains($fields, 'fields?for=vehicle') && str_contains($fields, 'fields?for=expense'), 'custom fields stop offering vehicles');
+            $vehicleId = (int) $this->db->table('money_vehicles')->insertGetId(['name' => 'Old Van', 'kind' => 'van', 'ownership' => 'owned', 'method' => 'actual', 'active' => 1, 'created_at' => '2026-01-01 00:00:00']);
+            $eid = (int) $this->db->table('money_expenses')->insertGetId(['expense_date' => '2026-10-01', 'title' => 'Van tyre', 'amount' => 80, 'vehicle_id' => $vehicleId, 'created_at' => '2026-10-01 00:00:00', 'updated_at' => '2026-10-01 00:00:00']);
+            $old = (new ExpenseController())->form($get('/admin/money/expenses/' . $eid), (string) $eid)->body;
+            $this->assert(str_contains($old, 'name="vehicle_id"') && str_contains($old, 'Old Van'), 'an expense that already has a vehicle keeps its box');
+            $this->assert((new VehicleController())->index($get('/admin/money/vehicles', ['year' => '2026-27']))->status === 200, 'the pages still open');
+            $s->set('money.feature_vehicles', '1');
+            $this->assert(in_array('money/vehicles', $urls(), true) && str_contains((new ExpenseController())->form($get('/admin/money/expenses/new'))->body, 'id="f_vehicle_id"'), 'switched back on, everything returns');
+        });
+        return '';
+    }
+
+    public function test_the_installer_asks_about_the_business_and_uses_the_answers(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            View::addNamespace('installer', AP_ROOT . '/Modules/Installer/Views');
+            $mm = app(\AP\Core\ModuleManager::class);
+            $steps = $mm->installSteps();
+            $this->assert(count($steps) === 1 && $steps[0]['key'] === 'business' && $steps[0]['module'] === 'money', 'Money adds the Your Business step');
+            session()->put('install', ['db' => ['host' => 'localhost', 'port' => 3306, 'database' => 'kim', 'username' => 'kim', 'password' => '', 'prefix' => 'ap_'], 'site' => ['name' => 'Kim Cabs', 'url' => 'https://example.com'], 'admin' => ['name' => 'Kim', 'email' => 'kim@example.com', 'password' => 'x']]);
+            $ic = new \AP\Modules\Installer\Controllers\InstallController();
+            $get = static fn(string $p) => new Request('GET', $p, [], [], [], ['HTTP_HOST' => 'localhost']);
+            $post = static fn(string $p, array $d) => new Request('POST', $p, [], $d, [], ['HTTP_HOST' => 'localhost']);
+            $page = $ic->step($get('/install/step/business'), 'business');
+            $this->assert($page->status === 200 && str_contains($page->body, 'Ready For My Kind Of Work') && str_contains($page->body, 'Fresh Start') && str_contains($page->body, 'value="Kim Cabs"')
+                && str_contains($page->body, 'value="kim@example.com"') && str_contains($page->body, 'js/money-setup.js') && str_contains($page->body, '5. Your Business'), 'the step shows both starts, the trades and the business details: ' . substr(strip_tags($page->body), 0, 200));
+            $bad = $ic->saveStep($post('/install/step/business', ['mode' => 'ready', 'vehicle' => '0']), 'business');
+            $this->assert($bad->status === 302 && str_contains((string) ($bad->headers['Location'] ?? ''), 'install/step/business'), 'no trade picked goes back to the step');
+            $ok = $ic->saveStep($post('/install/step/business', ['mode' => 'ready', 'trades' => ['trades', 'cleaning'], 'vehicle' => '1', 'home' => '0', 'dashboard' => '1', 'biz_name' => 'Kim Builds', 'biz_email' => 'hello@kim.test', 'skip_cat' => ['skip hire and waste']]), 'business');
+            $this->assert($ok->status === 302 && str_contains((string) ($ok->headers['Location'] ?? ''), 'install/options'), 'then on to Options');
+            $state = session()->get('install');
+            $this->assert(($state['steps']['business']['trades'] ?? []) === ['trades', 'cleaning'] && in_array('money', $state['force_modules'] ?? [], true), 'the answers are kept and Money must be on');
+            $opts = $ic->options($get('/install/options'));
+            $this->assert(preg_match('/id="m_money" value="money" checked disabled/', $opts->body) === 1 && str_contains($opts->body, 'Your Business need it') && str_contains($opts->body, 'install/step/business'), 'Options keeps Money on and goes back to the step');
+            $review = $ic->saveOptions($post('/install/options', ['from_name' => 'Kim', 'from_address' => '', 'content' => 'blank', 'modules' => []]));
+            $this->assert(str_contains($review->body, 'Ready for Tradesperson Or Builder and Cleaning and Home Services') && in_array('money', session()->get('install')['modules'], true), 'the review sums it up and Money is on: ' . substr(strip_tags($review->body), 0, 300));
+            // what the installer runs once the tables exist
+            $s = $this->liveSettings();
+            $lines = ($steps[0]['apply'])($this->db, $s, session()->get('install')['steps']['business'], session()->get('install'));
+            $this->assert(str_starts_with((string) $lines[0], 'Your business: Added') && $this->db->table('money_categories')->where('name', 'Materials')->exists()
+                && !$this->db->table('money_categories')->where('name', 'Skip Hire and Waste')->exists() && $s->get('money.biz_name') === 'Kim Builds', 'the installer adds the trades and the business name: ' . ($lines[0] ?? ''));
+            $this->assert(Money::business()['name'] === 'Kim Builds', 'invoices use it');
+            $s->set('money.biz_name', '');
+            $s->set('general.site_name', 'Kim Site');
+            $this->assert(Money::business()['name'] === 'Kim Site', 'an empty business name falls back to the site name');
+            session()->forget('install');
+        });
+        return '';
+    }
+
+    public function test_sites_already_in_use_keep_the_old_business_name_and_paid_by_list(): string
+    {
+        $migration = require __DIR__ . '/../migrations/2026_11_09_000001_keep_earlier_defaults.php';
+        $db = $this->freshDb();
+        $db->pdo()->exec('CREATE TABLE ap_settings (name TEXT PRIMARY KEY, value TEXT, updated_at TEXT)');
+        $migration->up($db);
+        $this->assert($db->table('settings')->count() === 0, 'a new site gets the new clean defaults');
+        $db->table('money_expenses')->insert(['expense_date' => '2026-10-01', 'title' => 'x', 'amount' => 1, 'created_at' => '2026-10-01 00:00:00', 'updated_at' => '2026-10-01 00:00:00']);
+        $db->table('settings')->insert(['name' => 'money.paid_by', 'value' => '[{"label":"Cash"}]', 'updated_at' => '2026-10-01 00:00:00']);
+        $migration->up($db);
+        $this->assert($db->table('settings')->where('name', 'money.biz_name')->value('value') === 'AP Services', 'a site in use keeps the business name it showed');
+        $this->assert($db->table('settings')->where('name', 'money.paid_by')->value('value') === '[{"label":"Cash"}]', 'a list that was saved is never touched');
+        $migration->up($db);
+        $this->assert($db->table('settings')->where('name', 'money.biz_name')->count() === 1, 'safe to run twice');
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';

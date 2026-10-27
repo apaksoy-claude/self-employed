@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 use AP\Core\View;
 use AP\Modules\Money\Money;
+use AP\Modules\Money\Setup;
 
 return [
     'name' => 'money',
@@ -30,9 +31,9 @@ return [
             'info' => 'Everything you spend, with receipts.', 'keywords' => 'expenses costs receipts spending'],
         ['label' => 'Receipt Inbox', 'icon' => 'fa-camera', 'url' => 'money/receipts', 'group' => 'Money', 'order' => 3.1, 'permission' => 'money.view',
             'info' => 'Take photos of receipts on your phone now and add the amounts later.', 'keywords' => 'receipt inbox photo camera phone mobile snap scan upload capture sort expenses'],
-        ['label' => 'Vehicles', 'icon' => 'fa-car-side', 'url' => 'money/vehicles', 'group' => 'Money', 'order' => 3.3, 'permission' => 'money.view',
+        ['label' => 'Vehicles', 'icon' => 'fa-car-side', 'url' => 'money/vehicles', 'group' => 'Money', 'order' => 3.3, 'permission' => 'money.view', 'when' => static fn(): bool => Setup::usesVehicles(),
             'info' => 'Your cars and vans, and whether the mileage rate or actual costs gives the bigger claim.', 'keywords' => 'vehicles cars van lease owned mileage rate actual costs capital allowances ottocar'],
-        ['label' => 'Mileage Log', 'icon' => 'fa-route', 'url' => 'money/trips', 'group' => 'Money', 'order' => 3.6, 'permission' => 'money.view',
+        ['label' => 'Mileage Log', 'icon' => 'fa-route', 'url' => 'money/trips', 'group' => 'Money', 'order' => 3.6, 'permission' => 'money.view', 'when' => static fn(): bool => Setup::usesVehicles(),
             'info' => 'Log business and private miles for each vehicle.', 'keywords' => 'mileage miles trips log odometer business private journey'],
         ['label' => 'Tax Estimate', 'icon' => 'fa-landmark', 'url' => 'money/tax', 'group' => 'Money', 'order' => 4, 'permission' => 'money.view',
             'info' => 'Income Tax and Class 4 National Insurance worked out from your profit.', 'keywords' => 'tax estimate income tax national insurance class 4 bill set aside'],
@@ -48,6 +49,9 @@ return [
             'info' => 'Which HMRC box each kind of cost goes into.', 'keywords' => 'categories hmrc boxes allowable'],
         ['label' => 'Income Streams', 'icon' => 'fa-diagram-project', 'url' => 'money/streams', 'group' => 'Money', 'order' => 5.5, 'permission' => 'money.view',
             'info' => 'Your sources of work, such as Uber or private hire.', 'keywords' => 'income streams sources uber private hire software colour rename delete'],
+        ['label' => 'Business Setup', 'icon' => 'fa-wand-magic-sparkles', 'url' => 'money/setup', 'group' => 'Money', 'order' => 5.8, 'permission' => 'money.edit',
+            'info' => 'Add ready-made categories, income streams, ways of paying and dashboard cards for your kind of work. Only adds; nothing you have is changed.',
+            'keywords' => 'business setup set up start starter install type of business trade kind of work ready made categories income streams driver courier taxi tradesperson builder plumber electrician freelancer creative designer seller retail online shop marketplace consultant coach tutor hair beauty barber cleaning cleaner gardener vehicle mileage work from home'],
         ['label' => 'Import', 'icon' => 'fa-file-import', 'url' => 'money/import', 'group' => 'Money', 'order' => 6, 'permission' => 'money.edit',
             'info' => 'Bring your records over from RISE CRM.', 'keywords' => 'import rise crm migrate sql'],
         ['label' => 'Button Style', 'icon' => 'fa-hand-pointer', 'url' => 'appearance/buttons', 'hub' => 'settings', 'category' => 'Look and languages', 'group' => 'Settings', 'order' => 14, 'permission' => 'settings.edit',
@@ -70,6 +74,10 @@ return [
             'tips' => ['Open any invoice and choose Actions > View PDF to see your changes.', 'The business name, address and logo come from Money > Business Details.']],
     ],
     'settings' => [
+        'money.feature_vehicles' => ['group' => 'money', 'section' => 'Features', 'section_icon' => 'fa-toggle-on', 'label' => 'Vehicles and Mileage', 'type' => 'checkbox', 'default' => true, 'order' => 0.1,
+            'help' => 'Shows Vehicles and the Mileage Log in the menu, and the vehicle box on expenses, scheduled reports and custom fields. Switch it off if you never use a vehicle for work: nothing is deleted.'],
+        'money.setup' => ['group' => 'money', 'label' => 'Business setup answers', 'type' => 'text', 'default' => '', 'hidden' => true],
+        'money.setup_dismissed' => ['group' => 'money', 'label' => 'Business setup banner closed', 'type' => 'text', 'default' => '', 'hidden' => true],
         'money.quarters' => ['group' => 'money', 'section' => 'Quarterly updates', 'section_icon' => 'fa-calendar-check', 'label' => 'Count quarters as', 'type' => 'segmented', 'default' => 'calendar',
             'options' => ['calendar' => 'Calendar quarters (1 Apr – 30 Jun…)', 'standard' => 'Standard quarters (6 Apr – 5 Jul…)'], 'rules' => 'required|in:calendar,standard',
             'help' => 'Use the same choice you made in your Making Tax Digital software.', 'order' => 1],
@@ -106,11 +114,11 @@ return [
             'help' => 'Keeps the download a sensible size. Anything left out is listed in the pack.'],
         'money.report_clients' => ['group' => 'money', 'section' => 'Reports', 'width' => 'half', 'label' => 'Clients shown in Income By Client', 'type' => 'number', 'default' => 10, 'rules' => 'integer|min:3|max:100', 'help' => 'The download always has every client.', 'order' => 71],
         'money.paid_by' => ['group' => 'money', 'section' => 'Ways Of Paying', 'section_icon' => 'fa-wallet', 'label' => 'Paid by options (money coming in)', 'type' => 'repeater',
-            'default' => [['label' => 'Bank Transfer'], ['label' => 'Cash'], ['label' => 'Card'], ['label' => 'Uber'], ['label' => 'Stripe'], ['label' => 'PayPal']],
+            'default' => array_map(static fn(string $l): array => ['label' => $l], Setup::PAID_BY),
             'add_label' => 'Add an option', 'max_rows' => 30, 'fields' => ['label' => ['label' => 'Name', 'placeholder' => 'Bank Transfer']],
             'help' => 'These fill the "Paid by" list when you add a payment or record one against an invoice. Drag to put them in the order you want.', 'order' => 60],
         'money.paid_with' => ['group' => 'money', 'section' => 'Ways Of Paying', 'label' => 'Paid with options (money going out)', 'type' => 'repeater',
-            'default' => [['label' => 'Card'], ['label' => 'Bank Transfer'], ['label' => 'Cash'], ['label' => 'Direct Debit']],
+            'default' => array_map(static fn(string $l): array => ['label' => $l], Setup::PAID_WITH),
             'add_label' => 'Add an option', 'max_rows' => 30, 'fields' => ['label' => ['label' => 'Name', 'placeholder' => 'Card']],
             'help' => 'These fill the "Paid with" list on expenses.', 'order' => 61],
         'money.gmail_on' => ['group' => 'money_gmail', 'section' => 'Connection', 'section_icon' => 'fa-plug', 'label' => 'Check Gmail by itself every hour', 'type' => 'checkbox', 'default' => false, 'order' => 1, 'help' => 'You can always press Check Mail Now on the Email Import page.'],
@@ -166,7 +174,7 @@ return [
         'money.portal_on' => ['group' => 'money_pay', 'section' => 'Client Portal', 'section_icon' => 'fa-address-card', 'label' => 'Let each client open a private page listing their invoices', 'type' => 'checkbox', 'default' => true, 'order' => 25,
             'help' => 'On the Contacts page, use the link button beside a client to copy their private portal link.'],
         'money.pay_bank_on' => ['group' => 'money_pay', 'section' => 'Bank Transfer', 'section_icon' => 'fa-building-columns', 'label' => 'Show bank transfer details', 'type' => 'checkbox', 'default' => true, 'order' => 20],
-        'money.pay_bank_details' => ['group' => 'money_pay', 'section' => 'Bank Transfer', 'label' => 'Bank details to show', 'type' => 'textarea', 'default' => '', 'rules' => 'nullable|string|max:600', 'placeholder' => "Account name: AP Services\nSort code: 00-00-00\nAccount number: 00000000",
+        'money.pay_bank_details' => ['group' => 'money_pay', 'section' => 'Bank Transfer', 'label' => 'Bank details to show', 'type' => 'textarea', 'default' => '', 'rules' => 'nullable|string|max:600', 'placeholder' => "Account name: Your Business Name\nSort code: 00-00-00\nAccount number: 00000000",
             'help' => 'Shown on the pay page and in the invoice email. Leave empty to hide the block.', 'order' => 21, 'show_if' => ['money.pay_bank_on' => '1']],
         'money.pay_title' => ['group' => 'money_pay', 'section' => 'The Pay Page', 'section_icon' => 'fa-file-invoice-dollar', 'width' => 'half', 'label' => 'Page heading', 'type' => 'text', 'default' => 'Pay Invoice', 'rules' => 'required|string|max:60', 'order' => 30],
         'money.pay_card_label' => ['group' => 'money_pay', 'section' => 'The Pay Page', 'width' => 'half', 'label' => 'Card button wording', 'type' => 'text', 'default' => 'Pay By Card', 'rules' => 'required|string|max:40', 'order' => 31],
@@ -213,7 +221,8 @@ return [
         'money.recurring_status' => ['group' => 'money', 'section' => 'Invoices', 'width' => 'half', 'label' => 'Repeating invoices are made as', 'type' => 'segmented', 'default' => 'sent', 'options' => ['sent' => 'Sent', 'draft' => 'Draft'], 'rules' => 'required|in:sent,draft', 'help' => 'Drafts are not counted as owed until you mark them as sent.', 'order' => 59],
         'money.invoice_prefix' => ['group' => 'money', 'section' => 'Invoices', 'section_icon' => 'fa-file-invoice', 'width' => 'half', 'label' => 'Invoice numbers start with (they count up by themselves)', 'type' => 'text', 'default' => 'INVOICE #', 'rules' => 'required|string|max:20', 'order' => 60],
         'money.terms_days' => ['group' => 'money', 'section' => 'Invoices', 'width' => 'half', 'label' => 'Due date is this many days after the bill date', 'type' => 'number', 'default' => 0, 'rules' => 'integer|min:0|max:365', 'order' => 61],
-        'money.biz_name' => ['group' => 'money', 'section' => 'Your business on invoices', 'section_icon' => 'fa-building', 'width' => 'half', 'label' => 'Business name', 'type' => 'text', 'default' => 'AP Services', 'rules' => 'nullable|string|max:120', 'order' => 70],
+        'money.biz_name' => ['group' => 'money', 'section' => 'Your business on invoices', 'section_icon' => 'fa-building', 'width' => 'half', 'label' => 'Business name', 'type' => 'text', 'default' => '', 'rules' => 'nullable|string|max:120', 'order' => 70,
+            'help' => 'Empty: your site name is used.'],
         'money.biz_logo' => ['group' => 'money', 'section' => 'Your business on invoices', 'label' => 'Logo', 'type' => 'image', 'default' => '', 'rules' => 'nullable|string|max:500', 'help' => 'Upload your logo or choose one from the media library. It is printed at the top of every invoice.', 'order' => 71],
         'money.biz_address' => ['group' => 'money', 'section' => 'Your business on invoices', 'label' => 'Address', 'type' => 'textarea', 'rows' => 2, 'default' => '', 'rules' => 'nullable|string|max:300', 'order' => 72],
         'money.biz_phone' => ['group' => 'money', 'section' => 'Your business on invoices', 'width' => 'half', 'label' => 'Phone', 'type' => 'text', 'default' => '', 'rules' => 'nullable|regex:/^.{0,40}$/', 'order' => 73],
@@ -228,6 +237,13 @@ return [
         'money.sent' => ['group' => 'money', 'label' => 'Quarters marked as sent', 'type' => 'text', 'default' => '[]', 'hidden' => true],
         'money.dash_layout' => ['group' => 'money', 'label' => 'Dashboard layout', 'type' => 'text', 'default' => '', 'hidden' => true],
         'money.note' => ['group' => 'money', 'label' => 'Dashboard note', 'type' => 'text', 'default' => '', 'hidden' => true],
+    ],
+    'install_step' => [
+        'key' => 'business', 'label' => 'Your Business', 'order' => 10, 'view' => 'money::setup/install',
+        'data' => static fn(array $state): array => Setup::installData($state),
+        'save' => static fn(\AP\Core\Request $request, array $state): array => Setup::installSave($request),
+        'summary' => static fn(array $value): string => Setup::describe($value),
+        'apply' => static fn(\AP\Core\DB $db, \AP\Core\Settings $settings, array $value, array $state): array => ['Your business: ' . Setup::result(Setup::apply($db, $settings, $value))],
     ],
     'search' => [
         'money_income' => ['label' => 'Income', 'icon' => 'fa-hand-holding-dollar', 'permission' => 'money.view', 'limit' => 5,
@@ -364,9 +380,9 @@ return [
             $path = trim((string) ($request->path ?? ''), '/');
             return str_starts_with($path, 'pay/') ? (string) preg_replace("/form-action 'self'/", "form-action 'self' https://checkout.stripe.com https://www.paypal.com https://www.sandbox.paypal.com", $csp) : $csp;
         });
-        View::inject('admin.head', static fn(): string => '<link rel="stylesheet" href="' . e(asset('css/ui.css')) . '"><link rel="stylesheet" href="' . e(asset('css/money.css')) . '">'
+        View::inject('admin.head', static fn(): string => '<link rel="stylesheet" href="' . e(asset('css/ui.css')) . '"><link rel="stylesheet" href="' . e(asset('css/money.css')) . '"><link rel="stylesheet" href="' . e(asset('css/money-setup.css')) . '">'
             . '<script nonce="' . e(csp_nonce()) . '">document.documentElement.setAttribute("data-btn",' . json_encode((string) setting('money.button_style', 'classic')) . ');document.documentElement.setAttribute("data-money-add",' . json_encode((string) setting('money.add_style', 'page')) . ');document.documentElement.setAttribute("data-fh",' . json_encode((string) setting('money.field_height', 'tall')) . ');document.documentElement.setAttribute("data-fr",' . json_encode((string) setting('money.field_radius', 'slight')) . ');document.documentElement.setAttribute("data-mw",' . json_encode((string) setting('money.modal_width', 'wider')) . ');</script>');
-        View::inject('admin.body_end', static fn(): string => '<script src="' . e(asset('js/ui.js')) . '"></script><script src="' . e(asset('js/money.js')) . '"></script>');
+        View::inject('admin.body_end', static fn(): string => '<script src="' . e(asset('js/ui.js')) . '"></script><script src="' . e(asset('js/money.js')) . '"></script><script src="' . e(asset('js/money-setup.js')) . '"></script>');
         View::inject('admin.dashboard_top', static fn(): string => \AP\Modules\Money\Dashboard::html(), 5);
     },
 ];

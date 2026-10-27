@@ -177,6 +177,25 @@ final class Installer
         }
         $log[] = 'Settings saved.';
 
+        // Steps that modules added to the installer (such as Your Business) now use their answers.
+        foreach ($this->modules->installSteps() as $step) {
+            $value = $state['steps'][$step['key']] ?? null;
+            if ($value === null || !is_callable($step['apply'] ?? null)) {
+                continue;
+            }
+            if (!in_array($step['module'], $selected, true) && empty($this->modules->get((string) $step['module'])['core'])) {
+                $log[] = $step['label'] . ': skipped, because its module is switched off.';
+                continue;
+            }
+            try {
+                foreach ((array) ($step['apply'])($db, $settings, $value, $state) as $line) {
+                    $log[] = (string) $line;
+                }
+            } catch (\Throwable $e) {
+                $log[] = $step['label'] . ': could not be finished (' . $e->getMessage() . '). You can do it later in the admin.';
+            }
+        }
+
         @file_put_contents(AP_STORAGE . '/installed.lock', "Installed " . $now . " UTC, version " . AP_VERSION . "\nDelete this file to run the installer again.\n");
         @file_put_contents(AP_STORAGE . '/version.lock', AP_VERSION);
         $log[] = 'Installer locked.';

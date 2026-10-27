@@ -13,6 +13,8 @@ return static function (Router $r): void {
         $r->post('/site', [InstallController::class, 'saveSite'], 'site.save');
         $r->get('/admin', [InstallController::class, 'admin'], 'admin');
         $r->post('/admin', [InstallController::class, 'saveAdmin'], 'admin.save');
+        $r->get('/step/{key:[a-z0-9_-]+}', [InstallController::class, 'step'], 'step');
+        $r->post('/step/{key:[a-z0-9_-]+}', [InstallController::class, 'saveStep'], 'step.save');
         $r->get('/options', [InstallController::class, 'options'], 'options');
         $r->post('/options', [InstallController::class, 'saveOptions'], 'options.save');
         $r->post('/finish', [InstallController::class, 'finish'], 'finish');

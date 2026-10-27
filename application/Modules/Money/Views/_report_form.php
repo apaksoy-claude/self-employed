@@ -23,6 +23,19 @@ for ($h = 0; $h < 24; $h++) {
 $doms = [0 => 'The last day'] + array_combine(range(1, 28), array_map(static fn($n) => 'Day ' . $n, range(1, 28)));
 $lists = ['category_id' => Money::options('money_categories'), 'contact_id' => Money::options('money_contacts'), 'stream_id' => Money::options('money_streams'), 'vehicle_id' => Money::options('money_vehicles')];
 $groups = ['' => 'No Grouping', 'category' => 'Category', 'supplier' => 'Supplier (Expenses)', 'client' => 'Client (Payments, Invoices)', 'stream' => 'Income Stream', 'vehicle' => 'Vehicle', 'month' => 'Month', 'state' => 'Status (Invoices)'];
+// With vehicles switched off (Settings > Money > Features), mileage reports and vehicle boxes are only offered when this report already uses them.
+$useVeh = \AP\Modules\Money\Setup::usesVehicles();
+$kinds = SR::KINDS;
+if (!$useVeh && $kind !== 'mileage') {
+    unset($kinds['mileage']);
+}
+if (!$useVeh && $v('group_by', '') !== 'vehicle') {
+    unset($groups['vehicle']);
+}
+$filterBoxes = ['category_id' => ['Category', 'expenses,income'], 'contact_id' => ['Client Or Supplier', 'expenses,income,invoices'], 'stream_id' => ['Income Stream', 'expenses,income,invoices'], 'vehicle_id' => ['Vehicle', 'expenses,mileage']];
+if (!$useVeh && empty($flt['vehicle_id'])) {
+    unset($filterBoxes['vehicle_id']);
+}
 ?>
 <form method="post" action="<?= e(admin_url('money/scheduled-reports/save')) ?>" class="mn-form rp-form" data-unsaved-warning novalidate><?= csrf_field() ?>
     <?php if (!empty($modal)): ?><h2 class="mn-form-title"><?= $j ? 'Change Report' : 'New Report' ?></h2><?php endif; ?>
@@ -30,15 +43,15 @@ $groups = ['' => 'No Grouping', 'category' => 'Category', 'supplier' => 'Supplie
     <div class="rp-sec"><div class="rp-head"><h3>What To Report</h3><p>Name the report and choose what it is about and which dates it covers.</p></div>
     <div class="mn-fields">
         <?= Fields::text('name', 'Report Name', $v('name'), ['required' => true, 'maxlength' => 120, 'placeholder' => 'Weekly Expenses', 'col' => 'is-half']) ?>
-        <?= Fields::select('kind', 'Report On', SR::KINDS, $kind, ['col' => 'is-half']) ?>
+        <?= Fields::select('kind', 'Report On', $kinds, $kind, ['col' => 'is-half']) ?>
         <?= Fields::select('period', 'Dates Covered', SR::PERIODS, $v('period', 'last_month'), ['col' => 'is-half']) ?>
         <div data-rp-when="period:last_days"><?= Fields::text('period_days', 'Number Of Days', $v('period_days', 30), ['inputmode' => 'numeric', 'maxlength' => 3, 'col' => 'is-half']) ?></div>
     </div></div>
     <div class="rp-sec" data-rp-when="kind:expenses,income,invoices,mileage">
         <div class="rp-head"><h3>Narrow It Down</h3><p>Leave a box on "Everything" to include it all.</p></div>
         <div class="mn-fields">
-            <?php foreach (['category_id' => ['Category', 'expenses,income'], 'contact_id' => ['Client Or Supplier', 'expenses,income,invoices'], 'stream_id' => ['Income Stream', 'expenses,income,invoices'], 'vehicle_id' => ['Vehicle', 'expenses,mileage']] as $k => [$label, $kinds]): ?>
-                <div data-rp-when="kind:<?= e($kinds) ?>"><?= Fields::select('f_' . $k, $label, $lists[$k], $flt[$k] ?? 0, ['none' => 'Everything', 'none_value' => '0', 'col' => 'is-half']) ?></div>
+            <?php foreach ($filterBoxes as $k => [$label, $kindsFor]): ?>
+                <div data-rp-when="kind:<?= e($kindsFor) ?>"><?= Fields::select('f_' . $k, $label, $lists[$k], $flt[$k] ?? 0, ['none' => 'Everything', 'none_value' => '0', 'col' => 'is-half']) ?></div>
             <?php endforeach; ?>
         </div>
     </div>

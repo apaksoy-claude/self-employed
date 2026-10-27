@@ -1452,6 +1452,33 @@ final class TestRunner
         return '';
     }
 
+    public function test_menu_items_can_wait_for_a_feature_and_modules_can_add_installer_steps(): string
+    {
+        $mm = new \AP\Core\ModuleManager(null);
+        $flag = false;
+        $menu = new \ReflectionProperty($mm, 'menu');
+        $menu->setAccessible(true);
+        $menu->setValue($mm, [['url' => 'a'], ['url' => 'b', 'when' => static function () use (&$flag): bool { return $flag; }],
+            ['url' => 'c', 'when' => static function (): bool { throw new \RuntimeException('broken'); }], ['url' => 'd', 'when' => 'not callable']]);
+        $this->assert(array_column($mm->menu(), 'url') === ['a', 'c', 'd'], 'an item whose feature is off is left out; a broken check never hides a page');
+        $flag = true;
+        $this->assert(array_column($mm->menu(), 'url') === ['a', 'b', 'c', 'd'], 'switched on, the item is back');
+        $mods = new \ReflectionProperty($mm, 'modules');
+        $mods->setAccessible(true);
+        $mods->setValue($mm, [
+            'late' => ['label' => 'Late', 'install_step' => ['key' => 'late', 'view' => 'late::x', 'order' => 20]],
+            'early' => ['label' => 'Early', 'install_step' => ['key' => 'early', 'view' => 'early::x', 'order' => 5]],
+            'bad' => ['label' => 'Bad', 'install_step' => ['key' => 'Bad Key!', 'view' => 'x']],
+            'noview' => ['label' => 'No View', 'install_step' => ['key' => 'noview']],
+            'none' => ['label' => 'None', 'install_step' => null],
+        ]);
+        $steps = $mm->installSteps();
+        $this->assert(array_column($steps, 'key') === ['early', 'late'] && $steps[0]['module'] === 'early' && $steps[0]['label'] === 'Early', 'installer steps come in order, and odd ones are ignored');
+        $controller = (string) file_get_contents(AP_ROOT . '/Modules/Installer/Controllers/InstallController.php');
+        $this->assert(str_contains($controller, "neighbour('admin', 1)") && str_contains((string) file_get_contents(AP_ROOT . '/Modules/Installer/Installer.php'), 'installSteps()'), 'the installer runs module steps after the admin account and uses their answers');
+        return '';
+    }
+
     public function test_settings_and_system_hubs_hold_their_pages_and_titles_use_title_case(): string
     {
         $this->assert(title_case('security and access') === 'Security and Access' && title_case('SEO and FAQs') === 'SEO and FAQs'

@@ -44,7 +44,7 @@ final class ModuleManager
             $meta += [
                 'label' => ucfirst((string) $meta['name']), 'version' => '1.0.0', 'description' => '', 'core' => false,
                 'requires' => [], 'routes' => null, 'permissions' => [], 'menu' => [], 'settings' => [],
-                'widgets' => [], 'schedule' => [], 'jobs' => [], 'email_templates' => [], 'setting_groups' => [], 'search' => [], 'boot' => null, 'default_enabled' => false, 'installer_only' => false,
+                'widgets' => [], 'schedule' => [], 'jobs' => [], 'email_templates' => [], 'setting_groups' => [], 'search' => [], 'boot' => null, 'default_enabled' => false, 'installer_only' => false, 'install_step' => null,
             ];
             $meta['path'] = dirname($file);
             $meta['folder'] = $folder;
@@ -333,9 +333,42 @@ final class ModuleManager
         return $this->permissions;
     }
 
+    /**
+     * Menu items the person can see now. An item with 'when' => fn(): bool is left out while it gives false
+     * (a feature switched off in settings); its page still opens and its data is kept.
+     */
     public function menu(): array
     {
-        return $this->menu;
+        return array_values(array_filter($this->menu, static function (array $item): bool {
+            if (!isset($item['when']) || !is_callable($item['when'])) {
+                return true;
+            }
+            try {
+                return (bool) ($item['when'])();
+            } catch (Throwable) {
+                return true;
+            }
+        }));
+    }
+
+    /**
+     * Extra installer steps offered by modules ('install_step' in module.php), in order. Each step has a key, a label,
+     * a view, and callables: data(state) for the view, save(request, state) => [errors, value], summary(value) for the review,
+     * and apply(db, settings, value, state) => log lines, run after the tables and settings are made.
+     * @return list<array<string,mixed>>
+     */
+    public function installSteps(): array
+    {
+        $steps = [];
+        foreach ($this->modules as $name => $m) {
+            $s = $m['install_step'] ?? null;
+            if (!is_array($s) || !preg_match('/^[a-z0-9_-]{1,40}$/', (string) ($s['key'] ?? '')) || empty($s['view'])) {
+                continue;
+            }
+            $steps[] = $s + ['module' => (string) $name, 'label' => (string) $m['label'], 'order' => 50];
+        }
+        usort($steps, static fn(array $a, array $b): int => ($a['order'] <=> $b['order']) ?: strcmp((string) $a['key'], (string) $b['key']));
+        return $steps;
     }
 
     public function widgets(): array

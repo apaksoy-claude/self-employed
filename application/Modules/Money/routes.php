@@ -23,6 +23,7 @@ use AP\Modules\Money\Controllers\ReceiptController;
 use AP\Modules\Money\Controllers\ReportController;
 use AP\Modules\Money\Controllers\ScheduledReportController;
 use AP\Modules\Money\Controllers\TaxController;
+use AP\Modules\Money\Controllers\SetupController;
 use AP\Modules\Money\Controllers\TripController;
 use AP\Modules\Money\Controllers\VehicleController;
 
@@ -114,6 +115,9 @@ return static function (Router $r): void {
 
 
 
+            $r->get('/setup', [SetupController::class, 'index'], 'setup');
+            $r->post('/setup/apply', [SetupController::class, 'apply'], 'setup.apply');
+            $r->post('/setup/dismiss', [SetupController::class, 'dismiss'], 'setup.dismiss');
             $r->get('/fields', [CustomFieldController::class, 'index'], 'fields');
             $r->post('/fields/save', [CustomFieldController::class, 'save'], 'fields.save');
             $r->get('/email-import', [GmailController::class, 'index'], 'gmail');

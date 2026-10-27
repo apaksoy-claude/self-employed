@@ -491,7 +491,11 @@ final class Money
     public static function business(): array
     {
         $g = static fn(string $k, string $d = ''): string => trim((string) setting('money.biz_' . $k, $d));
-        return ['name' => $g('name', 'AP Services'), 'address' => $g('address'), 'phone' => $g('phone'), 'email' => $g('email'), 'website' => $g('website'), 'logo' => $g('logo'), 'footer' => $g('footer')];
+        $name = $g('name');
+        if ($name === '') {
+            $name = trim((string) setting('general.site_name', '')) ?: 'My Business';
+        }
+        return ['name' => $name, 'address' => $g('address'), 'phone' => $g('phone'), 'email' => $g('email'), 'website' => $g('website'), 'logo' => $g('logo'), 'footer' => $g('footer')];
     }
 
     /** The next invoice number, one more than the biggest number in use, with your prefix (for example "INVOICE #565"). */

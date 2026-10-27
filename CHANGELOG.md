@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.37.0 - Set up for your kind of work
+Update package: install from System > Updates, then press "Finish update" (keeps your business name and "Paid by" list as they are).
+- New installs: the installer has a Your Business step after the admin account. Choose Ready For My Kind Of Work or Fresh Start. Pick one or more kinds of work (Driver Or Courier, Tradesperson Or Builder, Freelancer Or Creative, Retail Or Online Seller, Consultant Or Professional, Hair and Beauty, Cleaning and Home Services, Something Else), say whether you use a vehicle for work and whether you work from home, and type your business name and email.
+- Before anything is added it shows exactly what will be added: expense categories with the box each goes in on the tax return, income streams, ways of getting paid and ways of paying, each with a tick box to leave it out. The dashboard cards can be set to suit the work (for example Fuel This Month for drivers, Materials This Tax Year for trades).
+- New page: Money > Business Setup does the same at any time, for sites already in use or after a Fresh Start. It only adds: anything with the same name is left exactly as it is, and running it again adds nothing twice. It works in the background without reloading, and remembers which kinds of work were set up. Found with the top-bar search ("setup trade driver freelancer seller").
+- A banner on the dashboard offers Business Setup until it has been run, with Not Now to hide it for good.
+- Settings > Money > Features: Vehicles and Mileage can be switched off. Vehicles and the Mileage Log leave the menu, and the vehicle box leaves expenses, the expense filter, scheduled reports and custom fields. Nothing is deleted, and an expense that already has a vehicle keeps its box.
+- New sites no longer start with "AP Services" as the business name (an empty name uses the site name) or Uber in the "Paid by" list. Sites already in use keep both.
+- For module authors: a module can add its own installer step ('install_step' in module.php), and a menu item can hide while a feature is off ('when' => fn(): bool).
+- The installer's Options page now starts with the modules that are on by default ticked.
+- Tests: Money 57, core 65.
+
 ## 1.36.5 - Report switch colours
 Update package: install from System > Updates. No database changes.
 - Scheduled Reports: the on/off switch now really is green when on and red when off (the site's own switch style was overriding it).

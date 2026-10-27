@@ -21,6 +21,17 @@ $layout = Widgets::layout();
     </div>
 
 
+    <?php if (!empty($setupBanner)): ?>
+    <div class="su-banner" data-su-banner>
+        <span class="su-banner-icon"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>
+        <div class="su-banner-text"><strong>Set Money Up For Your Kind Of Work</strong><p>Add ready-made categories, income streams and dashboard cards for drivers, trades, freelancers, sellers and more. Nothing you already have is changed.</p></div>
+        <div class="su-banner-actions">
+            <a class="btn btn-primary mn-btn" href="<?= e(admin_url('money/setup')) ?>"><i class="fa-solid fa-arrow-right me-1" aria-hidden="true"></i>Start Setup</a>
+            <button class="btn btn-outline-secondary mn-btn" type="button" data-su-dismiss="<?= e(admin_url('money/setup/dismiss')) ?>" data-token="<?= e(csrf_token()) ?>">Not Now</button>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <?php if ($canEdit): ?>
     <div class="mn-editbar" id="board-bar" hidden>
         <p><i class="fa-solid fa-hand" aria-hidden="true"></i> Drag a card to move it, or use the arrows. Pick a width on each card. Changes save by themselves.</p>

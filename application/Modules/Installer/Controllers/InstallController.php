@@ -33,9 +33,59 @@ final class InstallController
         session()->put('install', $s);
     }
 
-    private function page(string $view, int $step, array $data = []): Response
+    /**
+     * Every step in order: the built-in ones with the steps modules offer (such as Your Business) after the admin account.
+     * @return list<array{key:string,label:string,url:string}>
+     */
+    private function steps(): array
     {
-        return view('installer::' . $view, $data + ['step' => $step, 'title' => 'Install AP Framework']);
+        $list = [['key' => 'requirements', 'label' => 'Requirements', 'url' => 'install'], ['key' => 'database', 'label' => 'Database', 'url' => 'install/database'],
+            ['key' => 'site', 'label' => 'Your Site', 'url' => 'install/site'], ['key' => 'admin', 'label' => 'Admin Account', 'url' => 'install/admin']];
+        foreach (app(ModuleManager::class)->installSteps() as $s) {
+            $list[] = ['key' => 'step:' . $s['key'], 'label' => title_case((string) $s['label']), 'url' => 'install/step/' . $s['key']];
+        }
+        $list[] = ['key' => 'options', 'label' => 'Options', 'url' => 'install/options'];
+        $list[] = ['key' => 'install', 'label' => 'Install', 'url' => 'install/options'];
+        return $list;
+    }
+
+    private function stepNo(string $key): int
+    {
+        foreach ($this->steps() as $i => $s) {
+            if ($s['key'] === $key) {
+                return $i + 1;
+            }
+        }
+        return count($this->steps()) + 1;
+    }
+
+    /** Address of the step after (or before) this one. */
+    private function neighbour(string $key, int $direction): string
+    {
+        $steps = $this->steps();
+        foreach ($steps as $i => $s) {
+            if ($s['key'] === $key && isset($steps[$i + $direction])) {
+                return $steps[$i + $direction]['url'];
+            }
+        }
+        return 'install';
+    }
+
+    /** @return array<string,mixed>|null the step a module offers under this key */
+    private function moduleStep(string $key): ?array
+    {
+        foreach (app(ModuleManager::class)->installSteps() as $s) {
+            if ($s['key'] === $key) {
+                return $s;
+            }
+        }
+        return null;
+    }
+
+    private function page(string $view, int|string $step, array $data = []): Response
+    {
+        $no = is_int($step) ? $step : $this->stepNo($step);
+        return view(str_contains($view, '::') ? $view : 'installer::' . $view, $data + ['step' => $no, 'steps' => array_column($this->steps(), 'label'), 'title' => 'Install AP Framework']);
     }
 
     private function need(string $key, string $redirect): ?Response
@@ -45,7 +95,7 @@ final class InstallController
 
     public function requirements(Request $request): Response
     {
-        return $this->page('requirements', 1, $this->installer()->requirements());
+        return $this->page('requirements', 'requirements', $this->installer()->requirements());
     }
 
     public function database(Request $request): Response
@@ -53,7 +103,7 @@ final class InstallController
         if (!$this->installer()->requirements()['canContinue']) {
             return redirect('install');
         }
-        return $this->page('database', 2, ['db' => $this->state()['db'] ?? ['host' => 'localhost', 'port' => 3306, 'database' => '', 'username' => '', 'password' => '', 'prefix' => 'ap_']]);
+        return $this->page('database', 'database', ['db' => $this->state()['db'] ?? ['host' => 'localhost', 'port' => 3306, 'database' => '', 'username' => '', 'password' => '', 'prefix' => 'ap_']]);
     }
 
     public function saveDatabase(Request $request): Response
@@ -86,7 +136,7 @@ final class InstallController
             return $r;
         }
         $default = ['name' => 'My Website', 'url' => request()->baseUrl(), 'timezone' => 'Europe/London', 'date_format' => 'd M Y'];
-        return $this->page('site', 3, ['site' => $this->state()['site'] ?? $default]);
+        return $this->page('site', 'site', ['site' => $this->state()['site'] ?? $default]);
     }
 
     public function saveSite(Request $request): Response
@@ -109,7 +159,7 @@ final class InstallController
         if ($r = $this->need('site', 'install/site')) {
             return $r;
         }
-        return $this->page('admin', 4, ['admin' => $this->state()['admin'] ?? ['name' => '', 'email' => '']]);
+        return $this->page('admin', 'admin', ['admin' => $this->state()['admin'] ?? ['name' => '', 'email' => '']]);
     }
 
     public function saveAdmin(Request $request): Response
@@ -138,7 +188,50 @@ final class InstallController
             return back_with_errors($errors, ['name' => $request->string('name'), 'email' => $request->string('email')], url('install/admin'));
         }
         $this->put('admin', ['name' => $request->string('name'), 'email' => mb_strtolower($request->string('email')), 'password' => $password]);
-        return redirect('install/options');
+        return redirect($this->neighbour('admin', 1));
+    }
+
+    /** A step a module adds to the installer, such as Your Business from Money. */
+    public function step(Request $request, string $key): Response
+    {
+        if ($r = $this->need('admin', 'install/admin')) {
+            return $r;
+        }
+        $step = $this->moduleStep($key) ?? throw new \AP\Core\HttpException(404);
+        $this->useModuleViews((string) $step['module']);
+        $state = $this->state();
+        $data = is_callable($step['data'] ?? null) ? (array) ($step['data'])($state) : [];
+        return $this->page((string) $step['view'], 'step:' . $key, $data + ['value' => $state['steps'][$key] ?? null, 'stepLabel' => title_case((string) $step['label']),
+            'action' => url('install/step/' . $key), 'backUrl' => url($this->neighbour('step:' . $key, -1))]);
+    }
+
+    public function saveStep(Request $request, string $key): Response
+    {
+        if ($r = $this->need('admin', 'install/admin')) {
+            return $r;
+        }
+        $step = $this->moduleStep($key) ?? throw new \AP\Core\HttpException(404);
+        $out = is_callable($step['save'] ?? null) ? (array) ($step['save'])($request, $this->state()) : ['value' => $request->post];
+        if (!empty($out['errors'])) {
+            return back_with_errors((array) $out['errors'], $request->post, url('install/step/' . $key));
+        }
+        $steps = (array) ($this->state()['steps'] ?? []);
+        $steps[$key] = $out['value'] ?? [];
+        $this->put('steps', $steps);
+        // The module that asked the questions has to be switched on for the answers to be used.
+        $force = (array) ($this->state()['force_modules'] ?? []);
+        $force[] = (string) $step['module'];
+        $this->put('force_modules', array_values(array_unique($force)));
+        return redirect($this->neighbour('step:' . $key, 1));
+    }
+
+    /** Lets a module's installer view be found before the module itself is switched on. */
+    private function useModuleViews(string $module): void
+    {
+        $m = app(ModuleManager::class)->get($module);
+        if ($m && is_dir($m['path'] . '/Views')) {
+            \AP\Core\View::addNamespace($module, $m['path'] . '/Views');
+        }
     }
 
     public function options(Request $request): Response
@@ -147,7 +240,18 @@ final class InstallController
             return $r;
         }
         $optional = array_filter(app(ModuleManager::class)->all(), static fn($m) => !$m['core']);
-        return $this->page('options', 5, ['optional' => $optional, 'state' => $this->state(), 'siteName' => $this->state()['site']['name'] ?? '']);
+        $state = $this->state();
+        $forced = array_values(array_intersect((array) ($state['force_modules'] ?? []), array_keys($optional)));
+        // First visit: modules that are on by default start ticked.
+        $ticked = isset($state['modules']) ? (array) $state['modules'] : array_keys(array_filter($optional, static fn($m) => !empty($m['default_enabled'])));
+        $needs = [];
+        foreach (app(ModuleManager::class)->installSteps() as $s) {
+            if (in_array($s['module'], $forced, true)) {
+                $needs[$s['module']] = title_case((string) $s['label']);
+            }
+        }
+        return $this->page('options', 'options', ['optional' => $optional, 'state' => $state, 'ticked' => array_values(array_unique(array_merge($ticked, $forced))), 'forced' => $needs,
+            'siteName' => $state['site']['name'] ?? '', 'backUrl' => url($this->neighbour('options', -1))]);
     }
 
     public function saveOptions(Request $request): Response
@@ -159,9 +263,18 @@ final class InstallController
         $optional = array_keys(array_filter(app(ModuleManager::class)->all(), static fn($m) => !$m['core']));
         $this->put('email', ['from_name' => $request->string('from_name'), 'from_address' => $request->string('from_address')]);
         $this->put('sample', $request->string('content') === 'sample');
-        $this->put('modules', array_values(array_intersect($optional, array_map('strval', (array) ($request->post['modules'] ?? [])))));
+        $chosen = array_merge(array_map('strval', (array) ($request->post['modules'] ?? [])), (array) ($this->state()['force_modules'] ?? []));
+        $this->put('modules', array_values(array_unique(array_intersect($optional, $chosen))));
         $this->put('ready', true);
-        return $this->page('review', 6, ['state' => $this->state(), 'optional' => app(ModuleManager::class)->all()]);
+        $extra = [];
+        $state = $this->state();
+        foreach (app(ModuleManager::class)->installSteps() as $s) {
+            $value = $state['steps'][$s['key']] ?? null;
+            if ($value !== null) {
+                $extra[title_case((string) $s['label'])] = is_callable($s['summary'] ?? null) ? (string) ($s['summary'])($value) : 'Answered';
+            }
+        }
+        return $this->page('review', 'install', ['state' => $state, 'optional' => app(ModuleManager::class)->all(), 'extra' => $extra]);
     }
 
     public function finish(Request $request): Response
@@ -183,16 +296,16 @@ final class InstallController
         if ($existing !== '' && $existing === $state['app_key']) {
             // The config file is already in place (written earlier or pasted by hand).
         } elseif (!$installer->writeConfig($config)) {
-            return $this->page('config_manual', 6, ['contents' => Installer::configFileContents($config)]);
+            return $this->page('config_manual', 'install', ['contents' => Installer::configFileContents($config)]);
         }
         try {
             $log = $installer->run($state);
         } catch (\Throwable $e) {
             \AP\Core\Logger::exception($e, $request);
-            return $this->page('failed', 6, ['message' => $e->getMessage()]);
+            return $this->page('failed', 'install', ['message' => $e->getMessage()]);
         }
         session()->forget('install');
-        return $this->page('done', 7, [
+        return $this->page('done', 'done', [
             'log' => $log, 'recoveryUrl' => rtrim($state['site']['url'], '/') . '/recovery/' . $state['recovery_key'],
             'adminUrl' => rtrim($state['site']['url'], '/') . '/admin/login', 'email' => $state['admin']['email'],
         ]);
