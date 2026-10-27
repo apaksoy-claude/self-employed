@@ -18,6 +18,7 @@ use AP\Modules\Money\Controllers\DemoController;
 use AP\Modules\Money\Controllers\ExpenseController;
 use AP\Modules\Money\Controllers\FileController;
 use AP\Modules\Money\Controllers\GmailController;
+use AP\Modules\Money\Controllers\HelpController;
 use AP\Modules\Money\Controllers\IncomeController;
 use AP\Modules\Money\Controllers\InvoiceController;
 use AP\Modules\Money\Controllers\OverviewController;
@@ -60,6 +61,9 @@ return static function (Router $r): void {
         $r->get('/', [OverviewController::class, 'index'], 'index');
         $r->get('/tax', [TaxController::class, 'index'], 'tax');
         $r->get('/vat', [VatController::class, 'index'], 'vat');
+        $r->get('/help', [HelpController::class, 'index'], 'help');
+        $r->get('/help/{key:[a-z-]+}', [HelpController::class, 'index'], 'help.article');
+        $r->post('/help/tour', [HelpController::class, 'tour'], 'help.tour');
         $r->get('/vat/csv', [VatController::class, 'csv'], 'vat.csv');
         $r->get('/cis', [CisController::class, 'index'], 'cis');
         $r->get('/cis/csv', [CisController::class, 'csv'], 'cis.csv');

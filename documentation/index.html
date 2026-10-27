@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Money 1.47.0 · Manual</title>
+<style>*{box-sizing:border-box}
+:root{--accent:#2563eb;--ink:#1f2937;--sub:#6b7280;--line:#e3e6ee;--card:#F5F6FA}
+html{scroll-behavior:smooth;scroll-padding-top:20px}
+body{margin:0;background:#fff;color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+a{color:var(--accent)}
+.wrap{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:100vh}
+aside{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);padding:22px 16px;background:#fff}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.brand b{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:11px;background:var(--accent);color:#fff;font-size:20px}
+.brand strong{font-size:17px;line-height:1.2}
+.ver{color:var(--sub);font-size:13px;margin:0 0 14px 48px}
+.find{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:14px;margin-bottom:12px;background:var(--card)}
+.grp{margin-bottom:10px}
+.grp>span{display:block;padding:6px 10px 3px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--sub)}
+.grp a{display:block;padding:6px 10px;border-radius:8px;color:#374151;text-decoration:none;font-size:14px}
+.grp a:hover{background:var(--card)}
+.grp a.on{background:#eaf1ff;color:#1d4ed8;font-weight:600}
+main{padding:38px 54px 80px;max-width:980px}
+.hero{padding:26px 28px;border-radius:18px;background:var(--card);border:1px solid var(--line);margin-bottom:34px}
+.hero h1{margin:0 0 6px;font-size:30px;letter-spacing:-.01em}
+.hero p{margin:0;color:#374151}
+section{padding:6px 0 26px;border-bottom:1px solid var(--line);margin-bottom:26px}
+section h2{display:flex;align-items:center;gap:12px;font-size:23px;margin:0 0 6px;letter-spacing:-.01em}
+.ic{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#eaf1ff;color:var(--accent);font-size:16px;font-weight:700}
+.lead{color:var(--sub);font-size:17px;margin-top:0}
+h3{font-size:17px;margin:22px 0 8px}
+.path{display:inline-block;font-size:13px;font-weight:600;color:#1d4ed8;background:#eaf1ff;border-radius:999px;padding:3px 12px}
+ol.steps{list-style:none;counter-reset:s;padding:0}
+ol.steps li{counter-increment:s;position:relative;padding:10px 14px 10px 52px;border-radius:12px;background:var(--card);margin:8px 0}
+ol.steps li::before{content:counter(s);position:absolute;left:14px;top:10px;width:26px;height:26px;border-radius:8px;background:var(--accent);color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+ul li{margin:4px 0}
+.tip{margin:16px 0;padding:12px 16px;border-radius:12px;background:#fff6e2;border:1px solid #f6dfa8;color:#7a4d00}
+code{font:13.5px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.badge{display:inline-block;padding:1px 9px;border-radius:999px;font-size:13px;font-weight:600}
+.badge.danger{background:#dc3545;color:#fff}.badge.warning{background:#f59e0b;color:#fff}.badge.success{background:#16a34a;color:#fff}.badge.dark{background:#1f2937;color:#fff}
+dl.glossary dt{font-weight:700;margin-top:12px}
+dl.glossary dd{margin:2px 0 0;color:#374151}
+.none{display:none;color:var(--sub)}
+.foot{color:var(--sub);font-size:13px}
+.menu-btn{display:none}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:24px 16px 60px}.menu-btn{display:inline-block;margin-bottom:10px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);font:inherit}aside nav.shut{display:none}}
+@media print{aside{display:none}.wrap{display:block}main{padding:0;max-width:none}section{break-inside:avoid-page}}</style>
+</head>
+<body>
+<div class="wrap">
+<aside>
+<div class="brand"><b>£</b><strong>Money<br><small style="font-weight:500;color:#6b7280">For The Self-Employed</small></strong></div>
+<p class="ver">Version 1.47.0 · Manual</p>
+<button class="menu-btn" type="button" data-menu>Contents</button>
+<nav aria-label="Contents">
+<input class="find" type="search" placeholder="Search the manual" aria-label="Search the manual" data-find>
+<div class="grp" data-grp><span>Introduction</span><a href="#welcome" data-nav="welcome">Welcome To Money</a></div><div class="grp" data-grp><span>Setting Up</span><a href="#install" data-nav="install">Installing Money</a><a href="#update" data-nav="update">Updating Money</a><a href="#schedule" data-nav="schedule">Tasks That Run By Themselves</a><a href="#privacy" data-nav="privacy">Privacy and Security</a></div><div class="grp" data-grp><span>Getting Started</span><a href="#business-setup" data-nav="business-setup">Business Setup</a><a href="#demo-data" data-nav="demo-data">Demo Data</a><a href="#dashboard" data-nav="dashboard">The Dashboard</a></div><div class="grp" data-grp><span>Money In and Out</span><a href="#invoices" data-nav="invoices">Invoices</a><a href="#payments" data-nav="payments">Payments</a><a href="#expenses" data-nav="expenses">Expenses</a><a href="#receipts" data-nav="receipts">Receipt Inbox</a><a href="#bank-import" data-nav="bank-import">Bank Import</a><a href="#email-import" data-nav="email-import">Email Import</a><a href="#clients" data-nav="clients">Clients and Suppliers</a><a href="#categories" data-nav="categories">Categories and Income Streams</a></div><div class="grp" data-grp><span>Tax</span><a href="#equipment" data-nav="equipment">Equipment</a><a href="#vehicles" data-nav="vehicles">Vehicles and Mileage</a><a href="#home" data-nav="home">Working From Home</a><a href="#tax-estimate" data-nav="tax-estimate">Tax Estimate</a><a href="#vat" data-nav="vat">VAT</a><a href="#cis" data-nav="cis">CIS For Builders</a></div><div class="grp" data-grp><span>Tools</span><a href="#stock" data-nav="stock">Stock</a><a href="#reports" data-nav="reports">Reports</a><a href="#custom-fields" data-nav="custom-fields">Custom Fields</a></div><div class="grp" data-grp><span>Settings</span><a href="#settings-money" data-nav="settings-money">Settings</a><a href="#users" data-nav="users">Users and Access</a><a href="#backups" data-nav="backups">Updates and Backups</a></div><div class="grp" data-grp><span>Questions and Answers</span><a href="#faq" data-nav="faq">Questions and Answers</a></div><div class="grp" data-grp><span>More</span><a href="#glossary" data-nav="glossary">Words Used</a><a href="#changelog" data-nav="changelog">What Is New</a></div>
+</nav>
+</aside>
+<main>
+<div class="hero"><h1>Money: The Manual</h1><p>How to install Money, set it up, and keep the records of a self-employed business, part by part. The same help is inside the app: Money &gt; Help Centre.</p></div>
+<p class="none" data-none>Nothing in the manual matches. Try one word, such as "mileage" or "VAT".</p>
+<section id="welcome" data-doc data-words="welcome to money money is a record-keeping app for uk sole traders. everything you type in stays in your own copy of the app, on your own website. nobody else can see it.
+what money does
+
+keeps every invoice, payment and expense, with receipts attached.
+files each cost to the right box of the self assessment return, so your accountant (or you) can copy the totals across.
+works out your profit, an estimate of your income tax and national insurance, and when to pay it.
+reads bank statements and receipt emails, so you type less.
+handles mileage, working from home, equipment, stock, vat and the construction industry scheme when they apply to you.
+
+what money does not do
+
+it does not send returns or payments to hmrc. you file your self assessment, vat and cis returns yourself, or your accountant does, using the figures here.
+the tax figures are an estimate to plan with. they follow the rules of each tax year (see settings &amp;gt; tax rules), but your real bill depends on things money cannot see, such as savings interest or student loans.
+
+where to start
+
+business setup (money &amp;gt; business setup): pick your kind of work. money adds categories, income streams and dashboard cards that suit it.
+your details (settings &amp;gt; money &amp;gt; your business on invoices): your business name, address and logo for invoices.
+your tax (settings &amp;gt; money &amp;gt; your tax): where you pay income tax, and whether you use the cash basis or traditional accounting.
+start recording: send an invoice, add an expense, or load a bank statement.
+
+want to look around first? money &amp;gt; demo data adds a year of made-up records, and one button takes them all away again."><h2><span class="ic">W</span>Welcome To Money</h2><p class="lead">Money keeps the records of a self-employed business: what comes in, what goes out, and what that means for your tax.</p><p>Money is a record-keeping app for UK sole traders. Everything you type in stays in your own copy of the app, on your own website. Nobody else can see it.</p>
+<h3>What Money Does</h3>
+<ul>
+<li>Keeps every <strong>invoice</strong>, <strong>payment</strong> and <strong>expense</strong>, with receipts attached.</li>
+<li>Files each cost to the right box of the Self Assessment return, so your accountant (or you) can copy the totals across.</li>
+<li>Works out your <strong>profit</strong>, an <strong>estimate of your Income Tax and National Insurance</strong>, and when to pay it.</li>
+<li>Reads <strong>bank statements</strong> and <strong>receipt emails</strong>, so you type less.</li>
+<li>Handles <strong>mileage</strong>, <strong>working from home</strong>, <strong>equipment</strong>, <strong>stock</strong>, <strong>VAT</strong> and the <strong>Construction Industry Scheme</strong> when they apply to you.</li>
+</ul>
+<h3>What Money Does Not Do</h3>
+<ul>
+<li>It does not send returns or payments to HMRC. You file your Self Assessment, VAT and CIS returns yourself, or your accountant does, using the figures here.</li>
+<li>The tax figures are an estimate to plan with. They follow the rules of each tax year (see Settings &gt; Tax Rules), but your real bill depends on things Money cannot see, such as savings interest or student loans.</li>
+</ul>
+<h3>Where To Start</h3>
+<ol class="steps">
+<li><strong>Business Setup</strong> (Money &gt; Business Setup): pick your kind of work. Money adds categories, income streams and dashboard cards that suit it.</li>
+<li><strong>Your details</strong> (Settings &gt; Money &gt; Your Business On Invoices): your business name, address and logo for invoices.</li>
+<li><strong>Your tax</strong> (Settings &gt; Money &gt; Your Tax): where you pay Income Tax, and whether you use the cash basis or traditional accounting.</li>
+<li>Start recording: send an invoice, add an expense, or load a bank statement.</li>
+</ol>
+<div class="tip">Want to look around first? Money &gt; Demo Data adds a year of made-up records, and one button takes them all away again.</div></section>
+<section id="install" data-doc data-words="installing money money runs on ordinary web hosting with cpanel. it needs no special software on the server.
+what the hosting needs
+
+php 8.1 or newer (cpanel &amp;gt; select php version), with the extensions pdo_mysql, mbstring, openssl, json, ctype and fileinfo. also switch on gd (images), curl (card payments), zip (update packages) and intl. the installer checks each one and says what to switch on.
+a mysql or mariadb database and a user for it (made in cpanel &amp;gt; mysql databases).
+an ssl certificate for the website (cpanel &amp;gt; ssl/tls status, often free). money should always be opened with https.
+
+step by step
+
+in cpanel, make the database and its user, and give the user all privileges on the database. note the three names and the password.
+upload everything in the package into the folder your domain points to (often public_html): index.php, .htaccess, assets and application side by side.
+make application/storage and application/config writable (755 or 775 in cpanel &amp;gt; file manager &amp;gt; permissions).
+open the website. the installer starts by itself: it checks the server, asks for the database details, the site name and the first admin account.
+your business: pick the kinds of work, how you work (vehicle, working from home, cis, stock) and, if you like, demo data to try it first. choose fresh start for an empty money.
+check the summary and press install. sign in with the admin account: the getting-started tour explains each part.
+
+the .htaccess file keeps the application folder away from the web. if the host lets you, you can move application one folder above the website: index.php finds it by itself."><h2><span class="ic">I</span>Installing Money</h2><p>Money runs on ordinary web hosting with cPanel. It needs no special software on the server.</p>
+<h3>What The Hosting Needs</h3>
+<ul>
+<li>PHP 8.1 or newer (cPanel &gt; Select PHP Version), with the extensions pdo_mysql, mbstring, openssl, json, ctype and fileinfo. Also switch on gd (images), curl (card payments), zip (update packages) and intl. The installer checks each one and says what to switch on.</li>
+<li>A MySQL or MariaDB database and a user for it (made in cPanel &gt; MySQL Databases).</li>
+<li>An SSL certificate for the website (cPanel &gt; SSL/TLS Status, often free). Money should always be opened with https.</li>
+</ul>
+<h3>Step By Step</h3>
+<ol class="steps">
+<li>In cPanel, make the database and its user, and give the user all privileges on the database. Note the three names and the password.</li>
+<li>Upload everything in the package into the folder your domain points to (often <code>public_html</code>): <code>index.php</code>, <code>.htaccess</code>, <code>assets</code> and <code>application</code> side by side.</li>
+<li>Make <code>application/storage</code> and <code>application/config</code> writable (755 or 775 in cPanel &gt; File Manager &gt; Permissions).</li>
+<li>Open the website. The installer starts by itself: it checks the server, asks for the database details, the site name and the first admin account.</li>
+<li><strong>Your Business</strong>: pick the kinds of work, how you work (vehicle, working from home, CIS, stock) and, if you like, demo data to try it first. Choose Fresh Start for an empty Money.</li>
+<li>Check the summary and press Install. Sign in with the admin account: the getting-started tour explains each part.</li>
+</ol>
+<div class="tip">The <code>.htaccess</code> file keeps the <code>application</code> folder away from the web. If the host lets you, you can move <code>application</code> one folder above the website: <code>index.php</code> finds it by itself.</div></section>
+<section id="update" data-doc data-words="updating money each new version comes as an update package (a zip). updates keep every record.
+
+take a backup first (see updates and backups).
+in the admin, open system &amp;gt; updates and upload the package. it checks the package and installs only what changed.
+if the yellow banner asks, press finish update. it updates the database and gives the administrator any new permissions.
+
+updates can also be copied over the site by ftp: never delete application/config or application/storage. then open the admin and press finish update.
+install updates in order. each package says which version it updates from."><h2><span class="ic">U</span>Updating Money</h2><p>Each new version comes as an update package (a zip). Updates keep every record.</p>
+<ol class="steps">
+<li>Take a backup first (see Updates and Backups).</li>
+<li>In the admin, open <strong>System &gt; Updates</strong> and upload the package. It checks the package and installs only what changed.</li>
+<li>If the yellow banner asks, press <strong>Finish update</strong>. It updates the database and gives the Administrator any new permissions.</li>
+</ol>
+<p>Updates can also be copied over the site by FTP: never delete <code>application/config</code> or <code>application/storage</code>. Then open the admin and press Finish update.</p>
+<p>Install updates in order. Each package says which version it updates from.</p></section>
+<section id="schedule" data-doc data-words="tasks that run by themselves some things happen on a schedule: repeating invoices and expenses, invoice reminders, checking the mailbox for receipts, scheduled reports and the weekly digest.
+
+nothing is required: the built-in scheduler runs due tasks after normal page views.
+for reliable timing, add a cron job in cpanel &amp;gt; cron jobs, once a minute: /usr/local/bin/php /home/user/public_html/ap schedule:run (change the path to your site), or call the secret web-cron address shown on system &amp;gt; scheduled tasks from a free cron service.
+
+system &amp;gt; scheduled tasks lists each task, when it last ran and what it did."><h2><span class="ic">T</span>Tasks That Run By Themselves</h2><p>Some things happen on a schedule: repeating invoices and expenses, invoice reminders, checking the mailbox for receipts, scheduled reports and the weekly digest.</p>
+<ul>
+<li>Nothing is required: the built-in scheduler runs due tasks after normal page views.</li>
+<li>For reliable timing, add a cron job in cPanel &gt; Cron Jobs, once a minute: <code>/usr/local/bin/php /home/USER/public_html/ap schedule:run</code> (change the path to your site), or call the secret web-cron address shown on System &gt; Scheduled tasks from a free cron service.</li>
+</ul>
+<p>System &gt; Scheduled tasks lists each task, when it last ran and what it did.</p></section>
+<section id="privacy" data-doc data-words="privacy and security 
+your records live only in your own copy of money, in your own database on your own hosting. nothing is sent to anyone else, and no one else holds a copy.
+passwords for email, stripe and paypal are stored encrypted with a key kept in application/config.
+receipts and files are kept in application/storage, which the web cannot open directly; they are shown only to people signed in with permission.
+clients see only their own invoices, through private links that cannot be guessed.
+give each person their own account with the access they need (users &amp;gt; roles and access), and switch on two-step sign-in.
+take backups of the database and application/storage, and keep one away from the website.
+"><h2><span class="ic">P</span>Privacy and Security</h2><ul>
+<li>Your records live only in your own copy of Money, in your own database on your own hosting. Nothing is sent to anyone else, and no one else holds a copy.</li>
+<li>Passwords for email, Stripe and PayPal are stored encrypted with a key kept in <code>application/config</code>.</li>
+<li>Receipts and files are kept in <code>application/storage</code>, which the web cannot open directly; they are shown only to people signed in with permission.</li>
+<li>Clients see only their own invoices, through private links that cannot be guessed.</li>
+<li>Give each person their own account with the access they need (Users &gt; Roles and access), and switch on two-step sign-in.</li>
+<li>Take backups of the database and <code>application/storage</code>, and keep one away from the website.</li>
+</ul></section>
+<section id="business-setup" data-doc data-words="business setup money &amp;gt; business setup
+business setup gives you a starting set of records that suits what you do. it only ever adds: anything you already have with the same name is left exactly as it is, so you can run it again at any time, for example when you take on a second kind of work.
+
+tick one or more kinds of work: driver or courier, tradesperson or builder, freelancer or creative, retail or online seller, consultant or professional, hair and beauty, cleaning and home services, or something else.
+say how you work: whether you use a vehicle (this shows vehicles and the mileage log), work from home, are paid under cis, or sell goods from stock.
+look at what will be added and untick anything you do not want.
+press add to my records.
+
+every category is filed to a box of the self assessment return (for example &quot;car, van and travel expenses&quot;). you can rename, refile or delete any of them later on money &amp;gt; categories."><h2><span class="ic">B</span>Business Setup</h2><p class="lead">Ready-made categories, income streams, ways of paying and dashboard cards for your kind of work.</p><p class="path">Money &gt; Business Setup</p>
+<p>Business Setup gives you a starting set of records that suits what you do. It only ever adds: anything you already have with the same name is left exactly as it is, so you can run it again at any time, for example when you take on a second kind of work.</p>
+<ol class="steps">
+<li>Tick one or more kinds of work: Driver Or Courier, Tradesperson Or Builder, Freelancer Or Creative, Retail Or Online Seller, Consultant Or Professional, Hair and Beauty, Cleaning and Home Services, or Something Else.</li>
+<li>Say how you work: whether you use a vehicle (this shows Vehicles and the Mileage Log), work from home, are paid under CIS, or sell goods from stock.</li>
+<li>Look at <strong>What Will Be Added</strong> and untick anything you do not want.</li>
+<li>Press <strong>Add To My Records</strong>.</li>
+</ol>
+<p>Every category is filed to a box of the Self Assessment return (for example "Car, van and travel expenses"). You can rename, refile or delete any of them later on Money &gt; Categories.</p></section>
+<section id="demo-data" data-doc data-words="demo data money &amp;gt; demo data
+demo data fills every page with something to look at: clients and suppliers, invoices (some paid, some still open), payments, five to eight expenses a month, a vehicle with a mileage log, a laptop as equipment, and stock items if you sell goods.
+
+made-up names end in &quot;(demo)&quot; and demo invoices are numbered demo-0001 and on. your own invoice numbers carry on as if they were not there.
+while demo data is in use, the dashboard shows a banner with delete all demo data.
+deleting takes away exactly what was added. if one of your own records uses a demo client, supplier, category or stream, that one is kept.
+
+delete the demo data before you start keeping real records, so your totals are your own."><h2><span class="ic">D</span>Demo Data</h2><p class="lead">A year of made-up records to try Money out, taken away again with one button.</p><p class="path">Money &gt; Demo Data</p>
+<p>Demo data fills every page with something to look at: clients and suppliers, invoices (some paid, some still open), payments, five to eight expenses a month, a vehicle with a mileage log, a laptop as equipment, and stock items if you sell goods.</p>
+<ul>
+<li>Made-up names end in "(Demo)" and demo invoices are numbered DEMO-0001 and on. Your own invoice numbers carry on as if they were not there.</li>
+<li>While demo data is in use, the dashboard shows a banner with <strong>Delete All Demo Data</strong>.</li>
+<li>Deleting takes away exactly what was added. If one of your own records uses a demo client, supplier, category or stream, that one is kept.</li>
+</ul>
+<div class="tip">Delete the demo data before you start keeping real records, so your totals are your own.</div></section>
+<section id="dashboard" data-doc data-words="the dashboard dashboard (the first page after signing in)
+the dashboard shows one tax year at a time (6 april to 5 april). change the year with the tax year box at the top.
+the cards
+
+the year: income, allowable costs, profit and the estimated tax, with where the year is heading at the current pace.
+quarters: the four quarterly updates of making tax digital. mark a quarter as sent and add a note.
+months: open a month to see every payment and cost behind it.
+needs a look: overdue invoices, expenses with no category or no receipt, vat or cis returns due, stock running low, and more.
+invoices, latest payments and expenses, income streams and deadlines.
+
+arranging the cards
+
+press customise. drag a card to move it, or use the arrows, and choose a width.
+press add a card to build your own: a number, a chart or a list, for any measure, period and category.
+changes save by themselves. reset layout puts the ready-made layout back.
+"><h2><span class="ic">T</span>The Dashboard</h2><p class="lead">Your year at a glance: money in, costs, profit, tax to put aside, and anything that needs a look.</p><p class="path">Dashboard (the first page after signing in)</p>
+<p>The dashboard shows one tax year at a time (6 April to 5 April). Change the year with the <strong>Tax year</strong> box at the top.</p>
+<h3>The Cards</h3>
+<ul>
+<li><strong>The year</strong>: income, allowable costs, profit and the estimated tax, with where the year is heading at the current pace.</li>
+<li><strong>Quarters</strong>: the four quarterly updates of Making Tax Digital. Mark a quarter as sent and add a note.</li>
+<li><strong>Months</strong>: open a month to see every payment and cost behind it.</li>
+<li><strong>Needs A Look</strong>: overdue invoices, expenses with no category or no receipt, VAT or CIS returns due, stock running low, and more.</li>
+<li><strong>Invoices</strong>, <strong>latest payments and expenses</strong>, <strong>income streams</strong> and <strong>deadlines</strong>.</li>
+</ul>
+<h3>Arranging The Cards</h3>
+<ol class="steps">
+<li>Press <strong>Customise</strong>. Drag a card to move it, or use the arrows, and choose a width.</li>
+<li>Press <strong>Add A Card</strong> to build your own: a number, a chart or a list, for any measure, period and category.</li>
+<li>Changes save by themselves. <strong>Reset Layout</strong> puts the ready-made layout back.</li>
+</ol></section>
+<section id="invoices" data-doc data-words="invoices money &amp;gt; invoices
+making an invoice
+
+press new invoice. the number counts up by itself (change the start in settings &amp;gt; money).
+choose the client (or type a new name), the bill date and the due date, and the income stream it belongs to.
+save, then press add item for each thing you charge for: a title, quantity, unit and rate. drag items to reorder them.
+add a discount if you give one. with vat or cis, choose the rate on each line (see the vat and cis articles).
+
+sending it
+
+actions &amp;gt; email invoice sends it with a pay invoice button. the client&#039;s private page shows the invoice and lets them pay by card (stripe), paypal, or bank transfer with your details. set these up in settings &amp;gt; invoice payments.
+view pdf and save as pdf give a printable invoice. its look (style, colour, font, wording) is in settings &amp;gt; invoice pdf look.
+send reminder appears once an invoice is overdue or was emailed and is still unpaid.
+
+statuses
+
+unpaid nothing paid yet; overdue unpaid after the due date; part paid some paid; paid paid in full.
+draft invoices are not counted anywhere until you mark them as sent. cancelled ones are kept for your records but never counted.
+
+repeating invoices
+tick repeat this invoice automatically on the invoice form, choose how often and when to stop. each new invoice gets the next number and a copy of the items, and can be emailed to the client by itself.
+clients and statements
+on money &amp;gt; clients and suppliers, each client has a statement of invoices and payments, which you can email, and a private portal link where they see all their invoices."><h2><span class="ic">I</span>Invoices</h2><p class="lead">Create invoices, email them with a pay link, and see what is still owed.</p><p class="path">Money &gt; Invoices</p>
+<h3>Making An Invoice</h3>
+<ol class="steps">
+<li>Press <strong>New Invoice</strong>. The number counts up by itself (change the start in Settings &gt; Money).</li>
+<li>Choose the client (or type a new name), the bill date and the due date, and the income stream it belongs to.</li>
+<li>Save, then press <strong>Add Item</strong> for each thing you charge for: a title, quantity, unit and rate. Drag items to reorder them.</li>
+<li>Add a discount if you give one. With VAT or CIS, choose the rate on each line (see the VAT and CIS articles).</li>
+</ol>
+<h3>Sending It</h3>
+<ul>
+<li><strong>Actions &gt; Email Invoice</strong> sends it with a <strong>Pay Invoice</strong> button. The client's private page shows the invoice and lets them pay by card (Stripe), PayPal, or bank transfer with your details. Set these up in Settings &gt; Invoice Payments.</li>
+<li><strong>View PDF</strong> and <strong>Save As PDF</strong> give a printable invoice. Its look (style, colour, font, wording) is in Settings &gt; Invoice PDF Look.</li>
+<li><strong>Send Reminder</strong> appears once an invoice is overdue or was emailed and is still unpaid.</li>
+</ul>
+<h3>Statuses</h3>
+<ul>
+<li><span class="badge danger">Unpaid</span> nothing paid yet; <span class="badge dark">Overdue</span> unpaid after the due date; <span class="badge warning">Part Paid</span> some paid; <span class="badge success">Paid</span> paid in full.</li>
+<li><strong>Draft</strong> invoices are not counted anywhere until you mark them as sent. <strong>Cancelled</strong> ones are kept for your records but never counted.</li>
+</ul>
+<h3>Repeating Invoices</h3>
+<p>Tick <strong>Repeat this invoice automatically</strong> on the invoice form, choose how often and when to stop. Each new invoice gets the next number and a copy of the items, and can be emailed to the client by itself.</p>
+<h3>Clients and Statements</h3>
+<p>On Money &gt; Clients and Suppliers, each client has a <strong>statement</strong> of invoices and payments, which you can email, and a private <strong>portal link</strong> where they see all their invoices.</p></section>
+<section id="payments" data-doc data-words="payments money &amp;gt; payments
+record every payment you receive. your income for tax is the total of your payments in the tax year (on the cash basis).
+
+press new payment.
+if it pays an invoice, choose the invoice: the client, stream and amount are filled in for you, and the invoice&#039;s balance goes down.
+otherwise say where it came from (for example &quot;weekly platform payout&quot;), the date, amount, stream and how it was paid.
+save. with vat, cis or stock switched on, the extra boxes appear for a payment with no invoice.
+
+payments made through the pay link (stripe or paypal) are added by themselves, once each.
+tick several payments in the list to change their stream or client together, or delete them."><h2><span class="ic">P</span>Payments</h2><p class="lead">Every bit of money that comes in, whether it pays an invoice or not.</p><p class="path">Money &gt; Payments</p>
+<p>Record every payment you receive. Your income for tax is the total of your payments in the tax year (on the cash basis).</p>
+<ol class="steps">
+<li>Press <strong>New Payment</strong>.</li>
+<li>If it pays an invoice, choose the invoice: the client, stream and amount are filled in for you, and the invoice's balance goes down.</li>
+<li>Otherwise say where it came from (for example "Weekly platform payout"), the date, amount, stream and how it was paid.</li>
+<li>Save. With VAT, CIS or Stock switched on, the extra boxes appear for a payment with no invoice.</li>
+</ol>
+<p>Payments made through the pay link (Stripe or PayPal) are added by themselves, once each.</p>
+<p>Tick several payments in the list to change their stream or client together, or delete them.</p></section>
+<section id="expenses" data-doc data-words="expenses money &amp;gt; expenses
+
+press new expense, say what it was for, the date and the amount.
+choose a category. the category decides the box of the tax return, and whether the cost counts at all (pension payments and personal spending do not).
+set business use (%) if it is partly personal, for example 60 for a phone used 60% for work.
+drop the receipt (photo or pdf) on the form.
+tick this cost comes again for rent, insurance or subscriptions: a copy is made each period until the date or number you choose.
+
+good to know
+
+things you buy to keep (tools, a laptop, a van) go to a category filed to &quot;equipment and vehicles bought&quot;: they appear on money &amp;gt; equipment and are claimed there.
+costs for a vehicle on the mileage rate are left out, because the rate covers them (parking and tolls still count).
+the dashboard reminds you about expenses with no category, and receipts missing on costs over the amount you choose in settings &amp;gt; money.
+tick several expenses to change their category, stream, vehicle, business share or vat together.
+"><h2><span class="ic">E</span>Expenses</h2><p class="lead">Your business costs, each filed to the right box of the tax return, with the receipt kept.</p><p class="path">Money &gt; Expenses</p>
+<ol class="steps">
+<li>Press <strong>New Expense</strong>, say what it was for, the date and the amount.</li>
+<li>Choose a <strong>category</strong>. The category decides the box of the tax return, and whether the cost counts at all (pension payments and personal spending do not).</li>
+<li>Set <strong>Business use (%)</strong> if it is partly personal, for example 60 for a phone used 60% for work.</li>
+<li>Drop the receipt (photo or PDF) on the form.</li>
+<li>Tick <strong>This cost comes again</strong> for rent, insurance or subscriptions: a copy is made each period until the date or number you choose.</li>
+</ol>
+<h3>Good To Know</h3>
+<ul>
+<li>Things you buy to keep (tools, a laptop, a van) go to a category filed to "Equipment and vehicles bought": they appear on Money &gt; Equipment and are claimed there.</li>
+<li>Costs for a vehicle on the mileage rate are left out, because the rate covers them (parking and tolls still count).</li>
+<li>The dashboard reminds you about expenses with no category, and receipts missing on costs over the amount you choose in Settings &gt; Money.</li>
+<li>Tick several expenses to change their category, stream, vehicle, business share or VAT together.</li>
+</ul></section>
+<section id="receipts" data-doc data-words="receipt inbox money &amp;gt; receipt inbox
+
+on your phone, open receipt inbox and press take a photo. it saves as soon as the photo is taken.
+later, open each receipt and fill in the date, amount and category. it becomes an expense with the photo attached.
+
+add the admin to your phone&#039;s home screen (share &amp;gt; add to home screen) so the camera is one tap away."><h2><span class="ic">R</span>Receipt Inbox</h2><p class="lead">Take photos of receipts on your phone now, and add the details later.</p><p class="path">Money &gt; Receipt Inbox</p>
+<ol class="steps">
+<li>On your phone, open Receipt Inbox and press <strong>Take a photo</strong>. It saves as soon as the photo is taken.</li>
+<li>Later, open each receipt and fill in the date, amount and category. It becomes an expense with the photo attached.</li>
+</ol>
+<div class="tip">Add the admin to your phone's home screen (Share &gt; Add to Home Screen) so the camera is one tap away.</div></section>
+<section id="bank-import" data-doc data-words="bank import money &amp;gt; bank import
+loading a statement
+
+in your online banking, download a statement as csv (sometimes called &quot;spreadsheet&quot; or &quot;excel&quot;) or ofx/qfx (&quot;money&quot; or &quot;quicken&quot;).
+drop it on load a statement and say which account it is (use the same name each time).
+for a csv from a new bank, money finds the date, description and amount by their names. if it cannot, it asks you once which column is which and how dates are written; save the layout and next time it is automatic.
+review every line: money out becomes an expense, money in a payment. change titles and categories, or set the category of all ticked lines at once.
+press add the ticked lines.
+
+never twice
+
+each line gets a fingerprint. lines added from an earlier statement show as already added and can never be added again.
+a line with the same amount as something you typed in by hand, a few days either side, shows as check and is left unticked. change how many days in settings &amp;gt; money &amp;gt; bank import.
+money coming in that matches what is left on an open invoice is counted against that invoice.
+made a mistake? recent imports &amp;gt; take back moves everything one import added to the bin.
+
+rules
+add a rule for each regular payee: when a description contains your words (for example &quot;shell&quot;), the line gets that category, stream and title. drag rules into order: the first that matches wins."><h2><span class="ic">B</span>Bank Import</h2><p class="lead">Load a statement from your online banking and turn its lines into expenses and payments.</p><p class="path">Money &gt; Bank Import</p>
+<h3>Loading A Statement</h3>
+<ol class="steps">
+<li>In your online banking, download a statement as <strong>CSV</strong> (sometimes called "spreadsheet" or "Excel") or <strong>OFX</strong>/<strong>QFX</strong> ("Money" or "Quicken").</li>
+<li>Drop it on <strong>Load A Statement</strong> and say which account it is (use the same name each time).</li>
+<li>For a CSV from a new bank, Money finds the date, description and amount by their names. If it cannot, it asks you once which column is which and how dates are written; save the layout and next time it is automatic.</li>
+<li>Review every line: money out becomes an expense, money in a payment. Change titles and categories, or set the category of all ticked lines at once.</li>
+<li>Press <strong>Add The Ticked Lines</strong>.</li>
+</ol>
+<h3>Never Twice</h3>
+<ul>
+<li>Each line gets a fingerprint. Lines added from an earlier statement show as <strong>Already Added</strong> and can never be added again.</li>
+<li>A line with the same amount as something you typed in by hand, a few days either side, shows as <strong>Check</strong> and is left unticked. Change how many days in Settings &gt; Money &gt; Bank Import.</li>
+<li>Money coming in that matches what is left on an open invoice is counted against that invoice.</li>
+<li>Made a mistake? <strong>Recent Imports &gt; Take Back</strong> moves everything one import added to the bin.</li>
+</ul>
+<h3>Rules</h3>
+<p>Add a rule for each regular payee: when a description contains your words (for example "SHELL"), the line gets that category, stream and title. Drag rules into order: the first that matches wins.</p></section>
+<section id="email-import" data-doc data-words="email import settings &amp;gt; email import, then money &amp;gt; email import
+connecting your mailbox
+
+open settings &amp;gt; email import and press the button for your provider (gmail, yahoo, icloud, aol, zoho, fastmail, ionos), or type your provider&#039;s imap server, port and security.
+make an app password in your email account&#039;s security settings (gmail: google account &amp;gt; security &amp;gt; 2-step verification &amp;gt; app passwords). type your email address and that app password.
+press test connection on money &amp;gt; email import.
+switch on check the mailbox by itself every hour if you want it to run alone.
+
+outlook, hotmail and microsoft 365 no longer allow other apps to sign in with a password. set a rule in outlook that forwards receipts to another mailbox, and connect that one.
+rules
+
+a rule says which emails to take (sender, words in the subject, a pdf attached), where the amount is (after words like &quot;total&quot;), and what the expense should be: title, category, supplier and how it was paid.
+press add example rules for four starters: parking receipts, supplier invoices with a pdf, software subscriptions and fuel receipts.
+only emails that match a rule are touched. matching emails can be moved to the bin after they are added.
+emails no rule took, and ones that need a look, wait in emails without a rule; create rule turns one into a rule with its details filled in.
+"><h2><span class="ic">E</span>Email Import</h2><p class="lead">Receipt and invoice emails become expenses by themselves, with the email or PDF kept.</p><p class="path">Settings &gt; Email Import, then Money &gt; Email Import</p>
+<h3>Connecting Your Mailbox</h3>
+<ol class="steps">
+<li>Open Settings &gt; Email Import and press the button for your provider (Gmail, Yahoo, iCloud, AOL, Zoho, Fastmail, IONOS), or type your provider's IMAP server, port and security.</li>
+<li>Make an <strong>app password</strong> in your email account's security settings (Gmail: Google Account &gt; Security &gt; 2-Step Verification &gt; App passwords). Type your email address and that app password.</li>
+<li>Press <strong>Test Connection</strong> on Money &gt; Email Import.</li>
+<li>Switch on <strong>Check The Mailbox By Itself Every Hour</strong> if you want it to run alone.</li>
+</ol>
+<div class="tip">Outlook, Hotmail and Microsoft 365 no longer allow other apps to sign in with a password. Set a rule in Outlook that forwards receipts to another mailbox, and connect that one.</div>
+<h3>Rules</h3>
+<ul>
+<li>A rule says which emails to take (sender, words in the subject, a PDF attached), where the amount is (after words like "Total"), and what the expense should be: title, category, supplier and how it was paid.</li>
+<li>Press <strong>Add Example Rules</strong> for four starters: parking receipts, supplier invoices with a PDF, software subscriptions and fuel receipts.</li>
+<li>Only emails that match a rule are touched. Matching emails can be moved to the bin after they are added.</li>
+<li>Emails no rule took, and ones that need a look, wait in <strong>Emails Without A Rule</strong>; <strong>Create Rule</strong> turns one into a rule with its details filled in.</li>
+</ul></section>
+<section id="clients" data-doc data-words="clients and suppliers money &amp;gt; clients and suppliers
+
+add a contact with its name, kind (client or supplier), email, phone and address. invoices use the client&#039;s address.
+statement lists a client&#039;s invoices and payments with what is still owed. email one client&#039;s statement, or everyone who owes money at once.
+portal gives the client a private link to see all their sent invoices and pay them.
+switch a contact off to archive it: it is kept on old records but no longer offered on new ones.
+with cis on, mark a client as a contractor (with the rate they take off) or a supplier as a subcontractor you pay.
+"><h2><span class="ic">C</span>Clients and Suppliers</h2><p class="lead">The people and businesses you work with, their statements and their private portal.</p><p class="path">Money &gt; Clients and Suppliers</p>
+<ul>
+<li>Add a contact with its name, kind (client or supplier), email, phone and address. Invoices use the client's address.</li>
+<li><strong>Statement</strong> lists a client's invoices and payments with what is still owed. Email one client's statement, or everyone who owes money at once.</li>
+<li><strong>Portal</strong> gives the client a private link to see all their sent invoices and pay them.</li>
+<li>Switch a contact off to archive it: it is kept on old records but no longer offered on new ones.</li>
+<li>With CIS on, mark a client as a contractor (with the rate they take off) or a supplier as a subcontractor you pay.</li>
+</ul></section>
+<section id="categories" data-doc data-words="categories and income streams money &amp;gt; categories, and money &amp;gt; income streams
+each expense category is filed to one box of the self assessment return, such as &quot;car, van and travel expenses&quot; or &quot;phone, fax, stationery and other office costs&quot;. two boxes are never costs: pension payments and personal spending. &quot;equipment and vehicles bought&quot; goes to money &amp;gt; equipment.
+income streams (for example &quot;client projects&quot; and &quot;royalties&quot;) show where your money comes from on the dashboard and in reports. costs can belong to a stream too, so each stream shows its own profit.
+drag categories and streams into the order you want them offered."><h2><span class="ic">C</span>Categories and Income Streams</h2><p class="lead">Categories decide where each cost goes on your tax return; streams split your income by kind of work.</p><p class="path">Money &gt; Categories, and Money &gt; Income Streams</p>
+<p>Each <strong>expense category</strong> is filed to one box of the Self Assessment return, such as "Car, van and travel expenses" or "Phone, fax, stationery and other office costs". Two boxes are never costs: pension payments and personal spending. "Equipment and vehicles bought" goes to Money &gt; Equipment.</p>
+<p><strong>Income streams</strong> (for example "Client Projects" and "Royalties") show where your money comes from on the dashboard and in reports. Costs can belong to a stream too, so each stream shows its own profit.</p>
+<p>Drag categories and streams into the order you want them offered.</p></section>
+<section id="equipment" data-doc data-words="equipment money &amp;gt; equipment
+anything filed to &quot;equipment and vehicles bought&quot; appears here by itself. you can also add equipment by hand. how it is claimed depends on how your accounts are kept (settings &amp;gt; money &amp;gt; your tax):
+
+cash basis: equipment is claimed in full, by its business share, in the year you buy it. cars still get capital allowances.
+traditional accounting: the annual investment allowance covers most purchases in full; above it, new main-rate equipment gets the 40% first year allowance, and the rest goes into the main or special rate pool and is claimed a share each year.
+
+cars are pooled by their co2: new zero-emission cars get 100% in the first year, up to the limit the main pool, above it the special rate pool. a car used privately gets its own pool, claimed by the business share.
+when you sell or give away something, enter the date and what you got: the sale comes off the pool (or counts as income on the cash basis).
+a car or van that has had capital allowances can no longer use the mileage rate. money stops it for you."><h2><span class="ic">E</span>Equipment</h2><p class="lead">Things you buy to keep, and what each tax year can claim for them.</p><p class="path">Money &gt; Equipment</p>
+<p>Anything filed to "Equipment and vehicles bought" appears here by itself. You can also add equipment by hand. How it is claimed depends on <strong>How Your Accounts Are Kept</strong> (Settings &gt; Money &gt; Your Tax):</p>
+<ul>
+<li><strong>Cash basis</strong>: equipment is claimed in full, by its business share, in the year you buy it. Cars still get capital allowances.</li>
+<li><strong>Traditional accounting</strong>: the Annual Investment Allowance covers most purchases in full; above it, new main-rate equipment gets the 40% first year allowance, and the rest goes into the main or special rate pool and is claimed a share each year.</li>
+</ul>
+<p>Cars are pooled by their CO2: new zero-emission cars get 100% in the first year, up to the limit the main pool, above it the special rate pool. A car used privately gets its own pool, claimed by the business share.</p>
+<p>When you sell or give away something, enter the date and what you got: the sale comes off the pool (or counts as income on the cash basis).</p>
+<div class="tip">A car or van that has had capital allowances can no longer use the mileage rate. Money stops it for you.</div></section>
+<section id="vehicles" data-doc data-words="vehicles and mileage money &amp;gt; vehicles, and money &amp;gt; mileage log
+
+add each vehicle you use for work and choose mileage rate or actual costs. once you choose the mileage rate for a vehicle, hmrc expects you to keep it for as long as you use that vehicle.
+log business trips on the mileage log: date, miles, from, to and why.
+each vehicle&#039;s page compares what the mileage rate gives with its actual costs.
+
+the mileage rates (per mile for the first 10,000 business miles and after) are in settings &amp;gt; tax rules for each year. on the mileage rate, fuel, insurance and repairs are covered by the rate and left out of costs; parking and tolls still count.
+no vehicle for work? switch off vehicles and mileage in settings &amp;gt; money &amp;gt; features: the menu items go and nothing is deleted."><h2><span class="ic">V</span>Vehicles and Mileage</h2><p class="lead">Claim the mileage rate or the actual running costs, and keep a log of business trips.</p><p class="path">Money &gt; Vehicles, and Money &gt; Mileage Log</p>
+<ol class="steps">
+<li>Add each vehicle you use for work and choose <strong>Mileage rate</strong> or <strong>Actual costs</strong>. Once you choose the mileage rate for a vehicle, HMRC expects you to keep it for as long as you use that vehicle.</li>
+<li>Log business trips on the Mileage Log: date, miles, from, to and why.</li>
+<li>Each vehicle's page compares what the mileage rate gives with its actual costs.</li>
+</ol>
+<p>The mileage rates (per mile for the first 10,000 business miles and after) are in Settings &gt; Tax Rules for each year. On the mileage rate, fuel, insurance and repairs are covered by the rate and left out of costs; parking and tolls still count.</p>
+<p>No vehicle for work? Switch off <strong>Vehicles and Mileage</strong> in Settings &gt; Money &gt; Features: the menu items go and nothing is deleted.</p></section>
+<section id="home" data-doc data-words="working from home settings &amp;gt; money &amp;gt; working from home
+
+actual costs: file household bills to categories in the &quot;use of home&quot; box and set the business share on each.
+flat rate: hmrc&#039;s simplified expenses give a set amount a month by the hours you work at home (from 25 hours a month). set your hours on the tax estimate page for each tax year. bills filed to &quot;use of home&quot; are then left out, as the flat rate covers them.
+"><h2><span class="ic">W</span>Working From Home</h2><p class="lead">Claim a share of your household bills, or HMRC&#039;s flat rate by the hours you work at home.</p><p class="path">Settings &gt; Money &gt; Working From Home</p>
+<ul>
+<li><strong>Actual costs</strong>: file household bills to categories in the "Use of home" box and set the business share on each.</li>
+<li><strong>Flat rate</strong>: HMRC's simplified expenses give a set amount a month by the hours you work at home (from 25 hours a month). Set your hours on the Tax Estimate page for each tax year. Bills filed to "Use of home" are then left out, as the flat rate covers them.</li>
+</ul></section>
+<section id="tax-estimate" data-doc data-words="tax estimate money &amp;gt; tax estimate
+
+profit: your income less allowable costs, or less the £1,000 trading allowance if that leaves a lower profit (choose in settings &amp;gt; money &amp;gt; your tax).
+income tax band by band, with the rates of the tax year, for england, wales and northern ireland or scotland.
+national insurance: class 4 on profits above the lower limit. class 2 is no longer charged, but you can add voluntary class 2 when profits are below the small profits threshold, to keep the year counting for your state pension.
+when to pay: the balance on 31 january after the tax year, and payments on account (half of the bill each, in january and july) when hmrc asks for them.
+making tax digital: whether it is likely to apply, from your income two tax years before.
+
+your other figures
+add wages or a pension and the tax already taken off them, payments on account you have made, and your hours at home (flat rate). they save in the background and the estimate updates straight away.
+this is a planning figure. your self assessment return is the real thing; check it with your accountant."><h2><span class="ic">T</span>Tax Estimate</h2><p class="lead">Income Tax and National Insurance worked out from your profit, and when to pay them.</p><p class="path">Money &gt; Tax Estimate</p>
+<ul>
+<li><strong>Profit</strong>: your income less allowable costs, or less the £1,000 trading allowance if that leaves a lower profit (choose in Settings &gt; Money &gt; Your Tax).</li>
+<li><strong>Income Tax</strong> band by band, with the rates of the tax year, for England, Wales and Northern Ireland or Scotland.</li>
+<li><strong>National Insurance</strong>: Class 4 on profits above the lower limit. Class 2 is no longer charged, but you can add voluntary Class 2 when profits are below the small profits threshold, to keep the year counting for your State Pension.</li>
+<li><strong>When To Pay</strong>: the balance on 31 January after the tax year, and payments on account (half of the bill each, in January and July) when HMRC asks for them.</li>
+<li><strong>Making Tax Digital</strong>: whether it is likely to apply, from your income two tax years before.</li>
+</ul>
+<h3>Your Other Figures</h3>
+<p>Add wages or a pension and the tax already taken off them, payments on account you have made, and your hours at home (flat rate). They save in the background and the estimate updates straight away.</p>
+<div class="tip">This is a planning figure. Your Self Assessment return is the real thing; check it with your accountant.</div></section>
+<section id="vat" data-doc data-words="vat settings &amp;gt; vat, then money &amp;gt; vat
+not registered
+money &amp;gt; vat watches your takings over the last 12 months against the registration threshold, and the dashboard warns you at the point you choose (80% to start). you must register within 30 days of the end of a month in which your last 12 months go over the threshold, or straight away if you expect the next 30 days alone to go over it.
+registered
+
+in settings &amp;gt; vat, tick i am vat registered, add your vat number and the date you registered, and choose your vat periods.
+choose your scheme: standard (pay the vat you charge, less the vat on your costs) or flat rate (a set percentage of your takings with vat, no vat back on costs except equipment of £2,000 or more). tick cash accounting if you use it.
+invoice lines get a vat rate; expenses and payments with no invoice get a rate and amount (left empty, the amount is worked out from the total).
+money &amp;gt; vat shows each period with its nine boxes, what to pay or reclaim, the due date, and every sale and cost behind the figures. type the boxes into your vat software, then press mark as filed.
+
+profit leaves vat out everywhere once you are registered. if records in a filed period change, the page shows what changed.
+construction work under cis between vat-registered businesses usually uses the domestic reverse charge: choose &quot;reverse charge&quot; on the line and the invoice says the customer accounts for the vat."><h2><span class="ic">V</span>VAT</h2><p class="lead">VAT on invoices and costs, the nine boxes of each return, and a watch on the registration threshold.</p><p class="path">Settings &gt; VAT, then Money &gt; VAT</p>
+<h3>Not Registered</h3>
+<p>Money &gt; VAT watches your takings over the last 12 months against the registration threshold, and the dashboard warns you at the point you choose (80% to start). You must register within 30 days of the end of a month in which your last 12 months go over the threshold, or straight away if you expect the next 30 days alone to go over it.</p>
+<h3>Registered</h3>
+<ol class="steps">
+<li>In Settings &gt; VAT, tick <strong>I Am VAT Registered</strong>, add your VAT number and the date you registered, and choose your VAT periods.</li>
+<li>Choose your scheme: <strong>Standard</strong> (pay the VAT you charge, less the VAT on your costs) or <strong>Flat Rate</strong> (a set percentage of your takings with VAT, no VAT back on costs except equipment of £2,000 or more). Tick cash accounting if you use it.</li>
+<li>Invoice lines get a VAT rate; expenses and payments with no invoice get a rate and amount (left empty, the amount is worked out from the total).</li>
+<li>Money &gt; VAT shows each period with its nine boxes, what to pay or reclaim, the due date, and every sale and cost behind the figures. Type the boxes into your VAT software, then press <strong>Mark As Filed</strong>.</li>
+</ol>
+<p>Profit leaves VAT out everywhere once you are registered. If records in a filed period change, the page shows what changed.</p>
+<div class="tip">Construction work under CIS between VAT-registered businesses usually uses the domestic reverse charge: choose "Reverse Charge" on the line and the invoice says the customer accounts for the VAT.</div></section>
+<section id="cis" data-doc data-words="cis for builders settings &amp;gt; cis, then money &amp;gt; cis
+paid under cis (subcontractor)
+
+tick contractors pay me under cis and choose the rate they take off: 20% (registered), 30% (not registered) or nothing (gross payment status).
+mark the client as a contractor on clients and suppliers. new invoices to them pick the rate.
+on each invoice line, say labour or materials. the deduction is on labour only, never materials or vat. the invoice shows it and asks for the total less the deduction.
+for payments with no invoice, type the cis taken off and the materials from the contractor&#039;s statement.
+on money &amp;gt; cis, tick each contractor&#039;s monthly statement when it arrives. money checks the rate taken.
+
+your income is the full amount before the deduction, and the deductions come off your tax on the tax estimate as tax already paid. if more was taken than you owe, hmrc pays it back after your return.
+paying subcontractors (contractor)
+
+tick i pay subcontractors under cis and add your employer&#039;s reference.
+mark each subcontractor on clients and suppliers with the rate and their utr (and verification number if they are taxed at 30%).
+on the expense paying them, type what you paid, the cis you took off and the materials. the cost is what you paid plus the deduction.
+money &amp;gt; cis shows each tax month (6th to 5th): print each subcontractor&#039;s payment and deduction statement, pay hmrc what you took off by the 22nd, file your monthly return by the 19th, and mark it as filed.
+"><h2><span class="ic">C</span>CIS For Builders</h2><p class="lead">The Construction Industry Scheme, for subcontractors who are paid under it and contractors who pay others.</p><p class="path">Settings &gt; CIS, then Money &gt; CIS</p>
+<h3>Paid Under CIS (Subcontractor)</h3>
+<ol class="steps">
+<li>Tick <strong>Contractors Pay Me Under CIS</strong> and choose the rate they take off: 20% (registered), 30% (not registered) or nothing (gross payment status).</li>
+<li>Mark the client as a contractor on Clients and Suppliers. New invoices to them pick the rate.</li>
+<li>On each invoice line, say <strong>Labour</strong> or <strong>Materials</strong>. The deduction is on labour only, never materials or VAT. The invoice shows it and asks for the total less the deduction.</li>
+<li>For payments with no invoice, type the CIS taken off and the materials from the contractor's statement.</li>
+<li>On Money &gt; CIS, tick each contractor's monthly statement when it arrives. Money checks the rate taken.</li>
+</ol>
+<p>Your income is the full amount before the deduction, and the deductions come off your tax on the Tax Estimate as tax already paid. If more was taken than you owe, HMRC pays it back after your return.</p>
+<h3>Paying Subcontractors (Contractor)</h3>
+<ol class="steps">
+<li>Tick <strong>I Pay Subcontractors Under CIS</strong> and add your employer's reference.</li>
+<li>Mark each subcontractor on Clients and Suppliers with the rate and their UTR (and verification number if they are taxed at 30%).</li>
+<li>On the expense paying them, type what you paid, the CIS you took off and the materials. The cost is what you paid plus the deduction.</li>
+<li>Money &gt; CIS shows each tax month (6th to 5th): print each subcontractor's payment and deduction statement, pay HMRC what you took off by the 22nd, file your monthly return by the 19th, and mark it as filed.</li>
+</ol></section>
+<section id="stock" data-doc data-words="stock settings &amp;gt; money &amp;gt; features &amp;gt; stock, then money &amp;gt; stock
+
+add each item with its sell price, how many you have now and what each cost.
+when you buy more, add stock bought lines to the expense: each item comes in at its cost each, or a share of the amount by quantity.
+invoice lines can come from stock (picking the item fills in its name and price), and payments with no invoice have sold from stock lines.
+use add or take out for damaged, used or returned items, and stock count to put the records right from what is on the shelf.
+
+costs follow the average of what you paid. with traditional accounting, count your stock on the last day of the tax year: the change in stock value over the year changes your cost of goods. on the cash basis goods count when you pay for them, so stock is for your own use."><h2><span class="ic">S</span>Stock</h2><p class="lead">For goods you buy to sell: what is left, what it cost, and the stock count.</p><p class="path">Settings &gt; Money &gt; Features &gt; Stock, then Money &gt; Stock</p>
+<ol class="steps">
+<li>Add each item with its sell price, how many you have now and what each cost.</li>
+<li>When you buy more, add <strong>Stock Bought</strong> lines to the expense: each item comes in at its cost each, or a share of the amount by quantity.</li>
+<li>Invoice lines can come <strong>From Stock</strong> (picking the item fills in its name and price), and payments with no invoice have <strong>Sold From Stock</strong> lines.</li>
+<li>Use <strong>Add Or Take Out</strong> for damaged, used or returned items, and <strong>Stock Count</strong> to put the records right from what is on the shelf.</li>
+</ol>
+<p>Costs follow the average of what you paid. With <strong>traditional accounting</strong>, count your stock on the last day of the tax year: the change in stock value over the year changes your cost of goods. On the <strong>cash basis</strong> goods count when you pay for them, so stock is for your own use.</p></section>
+<section id="reports" data-doc data-words="reports money &amp;gt; reports, and money &amp;gt; scheduled reports
+
+month by month income, costs and profit; costs by tax box and category; income by client; money still owed by age; this year against last.
+downloads: payments, expenses, invoices, mileage, income by client and money owed, as csv files that open in any spreadsheet. with vat or cis on, they include those columns.
+accountant pack: every download plus a summary page, in one zip, to email or hand over.
+scheduled reports: choose a report, how often and who receives it, as a pdf or csv.
+"><h2><span class="ic">R</span>Reports</h2><p class="lead">Totals for the tax year, downloads for your accountant, and reports emailed on a schedule.</p><p class="path">Money &gt; Reports, and Money &gt; Scheduled Reports</p>
+<ul>
+<li>Month by month income, costs and profit; costs by tax box and category; income by client; money still owed by age; this year against last.</li>
+<li><strong>Downloads</strong>: payments, expenses, invoices, mileage, income by client and money owed, as CSV files that open in any spreadsheet. With VAT or CIS on, they include those columns.</li>
+<li><strong>Accountant Pack</strong>: every download plus a summary page, in one zip, to email or hand over.</li>
+<li><strong>Scheduled Reports</strong>: choose a report, how often and who receives it, as a PDF or CSV.</li>
+</ul></section>
+<section id="custom-fields" data-doc data-words="custom fields money &amp;gt; custom fields
+add a box such as &quot;job number&quot; or &quot;purchase order&quot; to any form: text, a number, a date, a yes or no, or a choice from a list. choose whether it is needed, and whether it shows in lists and reports."><h2><span class="ic">C</span>Custom Fields</h2><p class="lead">Add your own boxes to invoices, payments, expenses and contacts.</p><p class="path">Money &gt; Custom Fields</p>
+<p>Add a box such as "Job number" or "Purchase order" to any form: text, a number, a date, a yes or no, or a choice from a list. Choose whether it is needed, and whether it shows in lists and reports.</p></section>
+<section id="settings-money" data-doc data-words="settings settings
+
+money: your business on invoices, features (vehicles, stock), your tax (where you pay, cash or traditional, trading allowance, class 2), working from home, quarters, the dashboard and bank import.
+tax rules: the rates and limits of each tax year. years hmrc has published are built in; change any figure and it is kept for that year only. a new year uses the year before until you copy it in and check it.
+vat, cis and email import: see their own articles.
+invoice payments: stripe, paypal and bank details, emails and reminders.
+invoice pdf look: style, colour, font, wording and which parts show.
+
+type any word in the search at the top of the admin (for example &quot;mileage&quot; or &quot;vat number&quot;) to jump to the right page or setting."><h2><span class="ic">S</span>Settings</h2><p class="lead">Where everything is set up: your business, your tax, features, and each part of Money.</p><p class="path">Settings</p>
+<ul>
+<li><strong>Money</strong>: your business on invoices, features (vehicles, stock), your tax (where you pay, cash or traditional, trading allowance, Class 2), working from home, quarters, the dashboard and bank import.</li>
+<li><strong>Tax Rules</strong>: the rates and limits of each tax year. Years HMRC has published are built in; change any figure and it is kept for that year only. A new year uses the year before until you copy it in and check it.</li>
+<li><strong>VAT</strong>, <strong>CIS</strong> and <strong>Email Import</strong>: see their own articles.</li>
+<li><strong>Invoice Payments</strong>: Stripe, PayPal and bank details, emails and reminders.</li>
+<li><strong>Invoice PDF Look</strong>: style, colour, font, wording and which parts show.</li>
+</ul>
+<div class="tip">Type any word in the search at the top of the admin (for example "mileage" or "VAT number") to jump to the right page or setting.</div></section>
+<section id="users" data-doc data-words="users and access users &amp;gt; staff, and users &amp;gt; roles and access
+
+two switches decide what someone can do in money: see income, expenses, invoices and receipts, and add, change and delete them. settings need their own permission.
+give an accountant a role with view only, or a bookkeeper view and edit.
+switch on two-step sign-in under your profile for extra safety.
+"><h2><span class="ic">U</span>Users and Access</h2><p class="lead">Let a bookkeeper or accountant in, with only the access they need.</p><p class="path">Users &gt; Staff, and Users &gt; Roles and access</p>
+<ul>
+<li>Two switches decide what someone can do in Money: <strong>See income, expenses, invoices and receipts</strong>, and <strong>Add, change and delete</strong> them. Settings need their own permission.</li>
+<li>Give an accountant a role with view only, or a bookkeeper view and edit.</li>
+<li>Switch on two-step sign-in under your profile for extra safety.</li>
+</ul></section>
+<section id="backups" data-doc data-words="updates and backups system &amp;gt; updates
+
+upload the update package on system &amp;gt; updates (or copy its files over your site).
+when the yellow banner asks, press finish update. it updates the database and keeps every record.
+
+take a backup of the database and the application/storage folder (receipts and files) regularly, from your hosting control panel. keep one copy away from your website."><h2><span class="ic">U</span>Updates and Backups</h2><p class="lead">Keep Money up to date and your records safe.</p><p class="path">System &gt; Updates</p>
+<ol class="steps">
+<li>Upload the update package on System &gt; Updates (or copy its files over your site).</li>
+<li>When the yellow banner asks, press <strong>Finish update</strong>. It updates the database and keeps every record.</li>
+</ol>
+<p>Take a backup of the database and the <code>application/storage</code> folder (receipts and files) regularly, from your hosting control panel. Keep one copy away from your website.</p></section>
+<section id="faq" data-doc data-words="questions and answers does money send anything to hmrc?
+no. money keeps your records and works out the figures. you file your returns yourself, or your accountant does.
+why is my profit different from my bank balance?
+profit counts only business income and allowable costs. money you put in or take out for yourself, pension payments, personal spending and equipment (claimed separately) are not part of it.
+an invoice shows as overdue but it was paid.
+add the payment on the invoice (add payment), or choose the invoice when you record the payment. a bank import can do it for you when the amount matches.
+the bank import added a line i had already typed in.
+lines that look like records added by hand are marked check and left unticked; if one was added anyway, delete either copy. take back on recent imports removes a whole import.
+email import says the sign-in was refused.
+most providers need an app password, not your normal password, and some need imap switched on in their settings. outlook, hotmail and microsoft 365 do not allow password sign-in at all: forward receipts to another mailbox instead.
+next year&#039;s tax rates are not there.
+on settings &amp;gt; tax rules press add for the new year: it copies the year before for you to check against gov.uk, and says so until you save it.
+can i use money for two businesses?
+income streams split income and costs within one business. two separate businesses are best kept in two copies of money."><h2><span class="ic">Q</span>Questions and Answers</h2><p class="lead">Answers to the questions people ask most.</p><h3>Does Money send anything to HMRC?</h3>
+<p>No. Money keeps your records and works out the figures. You file your returns yourself, or your accountant does.</p>
+<h3>Why is my profit different from my bank balance?</h3>
+<p>Profit counts only business income and allowable costs. Money you put in or take out for yourself, pension payments, personal spending and equipment (claimed separately) are not part of it.</p>
+<h3>An invoice shows as overdue but it was paid.</h3>
+<p>Add the payment on the invoice (Add Payment), or choose the invoice when you record the payment. A bank import can do it for you when the amount matches.</p>
+<h3>The bank import added a line I had already typed in.</h3>
+<p>Lines that look like records added by hand are marked Check and left unticked; if one was added anyway, delete either copy. Take Back on Recent Imports removes a whole import.</p>
+<h3>Email Import says the sign-in was refused.</h3>
+<p>Most providers need an app password, not your normal password, and some need IMAP switched on in their settings. Outlook, Hotmail and Microsoft 365 do not allow password sign-in at all: forward receipts to another mailbox instead.</p>
+<h3>Next year's tax rates are not there.</h3>
+<p>On Settings &gt; Tax Rules press <strong>Add</strong> for the new year: it copies the year before for you to check against gov.uk, and says so until you save it.</p>
+<h3>Can I use Money for two businesses?</h3>
+<p>Income streams split income and costs within one business. Two separate businesses are best kept in two copies of Money.</p></section>
+<section id="glossary" data-doc data-words="words used 
+tax year6 april to 5 april. 2026-27 runs from 6 april 2026 to 5 april 2027.
+allowable costsbusiness costs that come off your income before tax. personal spending, pension payments and equipment (claimed separately) are not among them.
+cash basisincome and costs count when the money comes in or goes out. hmrc&#039;s starting choice for sole traders.
+traditional accountingincome and costs count when they are earned or due, with capital allowances for equipment and stock counted at the year end.
+trading allowance£1,000 a year you can take off your income instead of your real costs.
+class 4 national insurancepaid on profits above the lower limit, through self assessment.
+payments on accounttwo advance payments towards next year&#039;s tax, each half of this year&#039;s bill, due 31 january and 31 july.
+making tax digital (mtd)quarterly updates to hmrc through compatible software, for those whose income is over the limit.
+capital allowanceswhat can be claimed for equipment and vehicles bought to keep: the annual investment allowance, first year allowances and writing down allowances.
+vat registration thresholdthe takings over 12 months at which you must register for vat.
+flat rate schemea vat scheme where you pay a set percentage of your takings with vat, and do not reclaim vat on most costs.
+cisthe construction industry scheme: contractors take tax off what they pay subcontractors for building work and pay it to hmrc.
+domestic reverse chargefor cis building work between vat-registered businesses, the customer accounts for the vat instead of the supplier.
+imapthe way email programs read a mailbox. money uses it to read receipt emails.
+"><h2><span class="ic">W</span>Words Used</h2><dl class="glossary">
+<dt>Tax year</dt><dd>6 April to 5 April. 2026-27 runs from 6 April 2026 to 5 April 2027.</dd>
+<dt>Allowable costs</dt><dd>Business costs that come off your income before tax. Personal spending, pension payments and equipment (claimed separately) are not among them.</dd>
+<dt>Cash basis</dt><dd>Income and costs count when the money comes in or goes out. HMRC's starting choice for sole traders.</dd>
+<dt>Traditional accounting</dt><dd>Income and costs count when they are earned or due, with capital allowances for equipment and stock counted at the year end.</dd>
+<dt>Trading allowance</dt><dd>£1,000 a year you can take off your income instead of your real costs.</dd>
+<dt>Class 4 National Insurance</dt><dd>Paid on profits above the lower limit, through Self Assessment.</dd>
+<dt>Payments on account</dt><dd>Two advance payments towards next year's tax, each half of this year's bill, due 31 January and 31 July.</dd>
+<dt>Making Tax Digital (MTD)</dt><dd>Quarterly updates to HMRC through compatible software, for those whose income is over the limit.</dd>
+<dt>Capital allowances</dt><dd>What can be claimed for equipment and vehicles bought to keep: the Annual Investment Allowance, first year allowances and writing down allowances.</dd>
+<dt>VAT registration threshold</dt><dd>The takings over 12 months at which you must register for VAT.</dd>
+<dt>Flat Rate Scheme</dt><dd>A VAT scheme where you pay a set percentage of your takings with VAT, and do not reclaim VAT on most costs.</dd>
+<dt>CIS</dt><dd>The Construction Industry Scheme: contractors take tax off what they pay subcontractors for building work and pay it to HMRC.</dd>
+<dt>Domestic reverse charge</dt><dd>For CIS building work between VAT-registered businesses, the customer accounts for the VAT instead of the supplier.</dd>
+<dt>IMAP</dt><dd>The way email programs read a mailbox. Money uses it to read receipt emails.</dd>
+</dl></section>
+<section id="changelog" data-doc data-words="what is new 1.47.0 - help centre, getting-started tour and manual
+update package: install from system &amp;gt; updates. no database changes.
+
+new page: money &amp;gt; help centre. an article for every part of money in plain words, with the path to each page, numbered steps and tips: getting started, business setup, demo data, the dashboard, invoices, payments, expenses, the receipt inbox, bank and email import, clients and suppliers, categories and streams, equipment, vehicles and mileage, working from home, stock, the tax estimate, vat, cis, reports, custom fields, settings, users and access, updates and backups, and questions and answers. topics are a list on the left that narrows as you type, and each article opens its page.
+the admin&amp;#039;s top-bar search finds help articles too.
+getting-started tour: the first time someone signs in, the dashboard walks them through each part of money in ten short steps, with back, next and skip. it is remembered for each person, can be shown again from the help centre, and can be switched off in settings &amp;gt; money &amp;gt; getting started.
+new manual: documentation/index.html, a single page to open in any browser or print, with installing, updating, tasks that run by themselves, privacy and security, every help centre article, the words used, and what is new in each version. it is built from the same articles as the help centre (php tools/build-docs.php), so the two always agree.
+settings section names are now in title case, and the invoice pdf look tips point to the right place for your business details.
+tests: money 67, core 65.
+
+1.46.0 - demo data for trials
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds one small table).
+
+new page: money &amp;gt; demo data. add about a year of made-up records to try money out, made for the kind of work you choose: clients and suppliers, invoices (paid, part paid and still open) with payments, or weekly takings for drivers, sellers and salons, five to eight expenses a month across your own categories, a vehicle with a mileage log, a laptop as equipment, and stock items for sellers when stock is on.
+made-up names end in &amp;quot;(demo)&amp;quot; and demo invoices are numbered demo-0001 and on, so your own invoice numbers carry on as if they were not there.
+delete all demo data takes away exactly what was added, with one button on the demo data page or on the dashboard banner shown while demo data is in use. a demo client, supplier, category or stream that one of your own records now uses is kept.
+the installer&amp;#039;s your business step can add demo data straight away.
+tests: money 66, core 65.
+
+1.45.0 - email import from any provider
+update package: install from system &amp;gt; updates. no database changes.
+
+email import now works with any mailbox that offers imap, not just gmail. settings &amp;gt; email import has buttons that fill in the server, port, security and bin folder for gmail, yahoo, icloud, aol, zoho, fastmail and ionos, or type in any other server.
+both kinds of secure connection: ssl/tls (usually port 993) and starttls (usually port 143).
+the tips say where each provider makes an app password. outlook, hotmail and microsoft 365 no longer let other apps sign in with a password, so the tips explain forwarding receipts to another mailbox instead.
+if the bin folder you name is not found, the folder the server marks as its bin is used.
+clearer messages when the server cannot be reached or refuses the sign-in.
+all wording now speaks of your mailbox rather than gmail.
+tests: money 65, core 65.
+
+1.44.0 - bank statement import
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds tables for bank layouts and imports).
+
+new page: money &amp;gt; bank import. load a statement downloaded from online banking: a csv from any bank, or an ofx or qfx file. say which account it is for, so the same account is always matched.
+csv columns are found by their names (date, description, amount, or paid in and paid out), even with lines above them. when a bank uses other names, choose the columns and the date style once and save the layout: statements from that bank are read by themselves after that.
+review every line before anything is added. money out becomes an expense and money in a payment, with the title and category to change. lines already added from an earlier statement are marked already added and can never be added again, so overlapping statements are safe. a line with the same amount as an expense or payment you typed in yourself a few days either side is marked check and left unticked (settings &amp;gt; money &amp;gt; bank import sets how many days). money in that matches what is left on an open invoice is counted against that invoice.
+rules, in rows you can reorder: when a description contains your words, the line gets that category, stream and title. the first rule that matches wins. rules save in the background.
+set the category of all ticked lines at once. long statements are sent as one list so nothing is lost.
+recent imports: take back an import that went wrong, moving what it added to the bin.
+with vat registered, imported lines get your starting vat choices.
+tests: money 64, core 65.
+
+1.43.0 - stock for sellers
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds the stock tables).
+
+settings &amp;gt; money &amp;gt; features: stock, with the starting warning level for new items. business setup and the installer ask about it too.
+new page: money &amp;gt; stock. your items with what is left, the cost each (the average of what you paid), the value, the sell price and the margin, marked in stock, low or out of stock. filters are remembered; ticked items can be archived, brought back, deleted or given a warning level. each item shows every movement.
+new items start with how many you have now and what each cost. add or take out handles damaged, used, returned or found stock, with a reason.
+expenses have stock bought lines (rows to add, remove and reorder): each item comes in at its cost each, or a share of the amount by quantity, without vat you reclaim.
+invoice lines can come from stock: picking an item fills in its name, price and unit, and the quantity goes out while the invoice is sent (not as a draft or cancelled). payments with no invoice have sold from stock lines. deleting a payment or an expense puts its stock back.
+stock count: type what is on the shelf for a day; differences are saved as a count, in the background.
+with traditional accounting, the change in stock value over each tax year changes your cost of goods (a rise lowers costs), in every profit figure. on the cash basis nothing changes, as goods count when you pay for them.
+the dashboard&amp;#039;s needs a look card lists items that are low or out of stock.
+repeating rows in forms now also work inside pop-up forms.
+tests: money 63, core 65.
+
+1.42.0 - cis for builders
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds cis columns and a table for monthly notes).
+
+new page: settings &amp;gt; cis. say contractors pay you under the construction industry scheme and at what rate (20%, 30% or gross payment status), and whether you pay subcontractors under cis, with your employer&amp;#039;s reference for their statements. business setup and the installer ask about cis too.
+clients and suppliers: mark a client as a cis contractor (with the rate they take off) or a supplier as a subcontractor you pay (with their utr or verification number).
+invoices: choose the cis rate (picked for you from the client), and mark each line as labour or materials. the deduction is worked out on the labour after any discount, never on materials or vat, and shown on the invoice page, the pdf and the pay page. the client is asked for the total less the deduction, and paying that settles the invoice. statements to clients show the same.
+payments with no invoice have cis taken off and materials boxes, filled from the contractor&amp;#039;s statement.
+your income now counts the full amount before cis, and the deductions come off your tax on the tax estimate as tax already paid, with &amp;quot;left to pay after cis&amp;quot; or the refund hmrc owes you, payments on account worked out after them, and the same on the dashboard and in the accountant pack.
+paying subcontractors: expenses have cis you took off and materials boxes; the cost is what they were paid plus the deduction.
+new page: money &amp;gt; cis. the tax months of the year (6th to 5th) down the left. for each: what each contractor paid you and took off, with a check of the rate and a tick when their statement arrives; what you paid each subcontractor and took off, a payment and deduction statement to print for each, what to pay hmrc by the 22nd, and your monthly return to mark as filed by the 19th. a csv of the whole year. the dashboard reminds you of each return from the first month you pay a subcontractor.
+vat: the construction reverse charge is now a vat choice for those under cis. the invoice adds no vat and says &amp;quot;reverse charge: customer to account for vat to hmrc&amp;quot;; reverse charge costs add the vat to box 1 and box 4 of your return. a client paying under cis pays the vat in full, as it is never part of the deduction.
+report downloads include cis columns when you use cis.
+tests: money 62, core 65.
+
+1.41.0 - vat
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds vat columns and a table for filed returns).
+
+new page: settings &amp;gt; vat. say you are registered, your vat number (printed on invoices), the date you registered from (records before it have no vat), your vat periods (three quarter patterns or monthly), your scheme (standard or flat rate, with your flat rate, the limited cost trader rate and 1% off in the first year), cash accounting, and the starting vat for new invoice lines and new expenses. only the settings that apply are shown.
+invoices: each line has a vat rate (standard, reduced, zero, exempt or outside the scope). the invoice works out the vat, takes a discount&amp;#039;s share off it, and shows the rate on each line, the vat total and your vat number on the invoice page, the pdf and the client&amp;#039;s pay page. changing the bill date works the vat out again.
+expenses and payments with no invoice have a vat rate and amount. leave the amount empty and it is worked out from the total; type it when the receipt shows a different figure. ticked expenses can have their vat set together.
+profit now leaves vat out everywhere: the dashboard, cards, tax estimate, reports and the accountant pack. on the flat rate scheme takings count less your flat rate, and vat on costs is not reclaimed except on equipment of £2,000 or more. equipment is counted without vat you reclaim.
+new page: money &amp;gt; vat. your vat periods are a list on the left, marked now, to file, late or filed. each shows the nine boxes worked out from your records (by invoice date, or by money in and out with cash accounting), what you pay hmrc or hmrc owes you, the due date, every sale and cost behind the figures, a csv download and a print view. mark a return as filed in the background with the date and hmrc reference; a copy of the figures is kept, and the page points out any records changed after filing.
+not registered: money &amp;gt; vat watches your last 12 months&amp;#039; takings against the registration threshold, with a warning point you choose (80% to start), and explains when you must register.
+the dashboard&amp;#039;s needs a look card says when a vat return is due or late, or when your takings are near the threshold.
+report downloads include vat columns when you are registered.
+settings now have a date box type that opens the styled date picker.
+tests: money 61, core 65.
+
+1.40.0 - equipment and capital allowances
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds the equipment table).
+
+new page: money &amp;gt; equipment. a register of tools, computers, machinery, furniture, vans, motorcycles and cars bought to keep. every expense filed to &amp;quot;equipment and vehicles bought&amp;quot; appears there by itself and follows its expense, so nothing is claimed twice. you can also add things by hand, with the date, cost, business share, whether it was new, co2 for cars, the vehicle it belongs to, and when it was sold and for how much.
+settings &amp;gt; money &amp;gt; your tax: how your accounts are kept. cash basis (the starting choice for most sole traders) claims equipment in full in the year it is bought, by its business share, and a sale later counts as income. traditional accounting uses the annual investment allowance up to the yearly limit, the 40% first year allowance on new equipment above it (from 1 january 2026), and the main and special rate pools. cars always get capital allowances: by co2 into the main or special rate pool, 100% for new zero-emission cars, and their own pool when used privately. sales come off the pools, with balancing allowances and charges.
+the claims count everywhere profit does: the dashboard, quarter and month cards, the tax estimate, reports and the accountant pack (as &amp;quot;equipment claims&amp;quot;).
+the equipment page shows each tax year&amp;#039;s claim, how it adds up, and what is left in each pool, with filters that are remembered, ticked rows that can change kind, and edit and delete on every row.
+a car or van linked to a vehicle in the mileage log counts as having had allowances, so it can no longer use the mileage rate (hmrc&amp;#039;s rule), and the vehicle comparison uses the real allowance.
+settings &amp;gt; tax rules has a new equipment and capital allowances card for each year: the annual investment allowance, the main and special pool rates (main pool 14% from 2026-27, 18% before), first year allowances, the car co2 limit and the small pool limit.
+tests: money 60, core 65.
+
+1.39.0 - tax rules for each tax year
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot; (adds one small table; any rates you changed before are kept for this tax year).
+
+new page: settings &amp;gt; tax rules. each tax year has its own rates: income tax for england, wales and northern ireland, scottish bands, class 4 and class 2 national insurance, the trading allowance, payments on account, the making tax digital limit, mileage rates and the working-from-home flat rate. 2024-25, 2025-26 and 2026-27 are built in. the years are a list on the left; lists such as the scottish bands are rows you can add, remove and drag. save works in the background. add the next year copies the newest year to check, and back to built-in undoes your changes. a year with no rates of its own uses the year before and says so.
+settings &amp;gt; money &amp;gt; your tax: where you pay income tax (england, wales or northern ireland, or scotland), expenses or the £1,000 trading allowance (or whichever leaves the lower profit), and voluntary class 2 when profits are below the small profits threshold.
+settings &amp;gt; money &amp;gt; working from home: claim the business share of your bills, or hmrc&amp;#039;s flat rate a month. with the flat rate, set the hours you work at home on the tax estimate page; bills filed to &amp;quot;use of home&amp;quot; are then left out because the flat rate covers them.
+tax estimate: scottish rates, other income (wages or a pension) and the tax already taken off it, the trading allowance compared with your costs, when to pay (the january balance with payments on account, and july), a note on class 2 and your state pension, and whether making tax digital is likely to apply (from your income two years before). your figures save in the background and the estimate updates without reloading.
+the dashboard, reports, accountant pack and mileage all use the rates of the right tax year.
+tests: money 57, core 65.
+
+1.38.0 - a clean start for every business
+update package: install from system &amp;gt; updates. no database changes.
+
+the import from another invoicing program is removed, with its page, menu entry and search words. anything already imported stays.
+every example, placeholder, search word and email sample now uses neutral names, such as &amp;quot;northwind ltd&amp;quot; for a client and &amp;quot;your business&amp;quot; for you.
+email import&amp;#039;s add example rules now gives four rules that suit any business: parking receipts, supplier invoices with a pdf, software subscriptions and fuel receipts. each is meant to be changed to suit.
+the changelog before 1.37.0 is now a short summary of what the app does.
+tests: money 53, core 65.
+
+1.37.0 - set up for your kind of work
+update package: install from system &amp;gt; updates, then press &amp;quot;finish update&amp;quot;.
+
+new installs: the installer has a your business step after the admin account. choose ready for my kind of work or fresh start. pick one or more kinds of work (driver or courier, tradesperson or builder, freelancer or creative, retail or online seller, consultant or professional, hair and beauty, cleaning and home services, something else), say whether you use a vehicle for work and whether you work from home, and type your business name and email.
+before anything is added it shows exactly what will be added: expense categories with the box each goes in on the tax return, income streams, ways of getting paid and ways of paying, each with a tick box to leave it out. the dashboard cards can be set to suit the work (for example fuel this month for drivers, materials this tax year for trades).
+new page: money &amp;gt; business setup does the same at any time, for sites already in use or after a fresh start. it only adds: anything with the same name is left exactly as it is, and running it again adds nothing twice. it works in the background without reloading, and remembers which kinds of work were set up. found with the top-bar search (&amp;quot;setup trade driver freelancer seller&amp;quot;).
+a banner on the dashboard offers business setup until it has been run, with not now to hide it for good.
+settings &amp;gt; money &amp;gt; features: vehicles and mileage can be switched off. vehicles and the mileage log leave the menu, and the vehicle box leaves expenses, the expense filter, scheduled reports and custom fields. nothing is deleted, and an expense that already has a vehicle keeps its box.
+new sites start with an empty business name (the site name is used until one is typed) and a plain &amp;quot;paid by&amp;quot; list.
+for module authors: a module can add its own installer step (&amp;#039;install_step&amp;#039; in module.php), and a menu item can hide while a feature is off (&amp;#039;when&amp;#039; =&amp;gt; fn(): bool).
+the installer&amp;#039;s options page now starts with the modules that are on by default ticked.
+tests: money 57, core 65.
+
+1.36.5 and earlier - the foundation
+everything the app could do before the business setup, in short:
+
+money: invoices with items, discounts, repeating invoices and automatic numbers; payments, with part payments and a searchable invoice picker; expenses with receipts, business share, repeating costs and bulk changes; clients and suppliers with statements and a private client portal; income streams; categories filed to the boxes of the self assessment self-employment pages.
+pay online: invoices emailed with a private pay page for card (stripe, with apple pay and google pay), paypal or bank transfer, test modes, receipts and overdue reminders.
+vehicles and a mileage log, with the hmrc mileage rate or actual costs compared side by side.
+tax estimate (income tax and class 4 national insurance), quarterly update cards, an arrangeable dashboard with ready-made and home-made cards and ten card styles.
+reports, csv downloads, an accountant pack (by download or email, also once a year by itself), scheduled reports emailed as pdfs, a weekly digest and reminders in the notification bell.
+email import rules that turn receipt and invoice emails into expenses, a receipt inbox for phone photos, and custom fields on every form.
+records only: nothing is ever sent to hmrc.
+the framework underneath: installer and one-click updates with roll back, admin with search, settings and system menus, roles and access, two-step sign-in, email sending and templates, scheduled tasks, health check and monitoring, logs, media library, pages, menus, footer builder, maps, newsletter sign-up, languages, seo, cookie notice, spam protection and an installable app.
+
+"><h2><span class="ic">W</span>What Is New</h2><h3>1.47.0 - Help Centre, getting-started tour and manual</h3>
+<p>Update package: install from System &gt; Updates. No database changes.</p>
+<ul>
+<li>New page: Money &gt; Help Centre. An article for every part of Money in plain words, with the path to each page, numbered steps and tips: getting started, Business Setup, demo data, the dashboard, invoices, payments, expenses, the Receipt Inbox, bank and email import, clients and suppliers, categories and streams, equipment, vehicles and mileage, working from home, stock, the Tax Estimate, VAT, CIS, reports, custom fields, settings, users and access, updates and backups, and questions and answers. Topics are a list on the left that narrows as you type, and each article opens its page.</li>
+<li>The admin&#039;s top-bar search finds help articles too.</li>
+<li>Getting-started tour: the first time someone signs in, the dashboard walks them through each part of Money in ten short steps, with Back, Next and Skip. It is remembered for each person, can be shown again from the Help Centre, and can be switched off in Settings &gt; Money &gt; Getting Started.</li>
+<li>New manual: documentation/index.html, a single page to open in any browser or print, with installing, updating, tasks that run by themselves, privacy and security, every Help Centre article, the words used, and what is new in each version. It is built from the same articles as the Help Centre (php tools/build-docs.php), so the two always agree.</li>
+<li>Settings section names are now in Title Case, and the Invoice PDF Look tips point to the right place for your business details.</li>
+<li>Tests: Money 67, core 65.</li>
+</ul>
+<h3>1.46.0 - Demo data for trials</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds one small table).</p>
+<ul>
+<li>New page: Money &gt; Demo Data. Add about a year of made-up records to try Money out, made for the kind of work you choose: clients and suppliers, invoices (paid, part paid and still open) with payments, or weekly takings for drivers, sellers and salons, five to eight expenses a month across your own categories, a vehicle with a mileage log, a laptop as equipment, and stock items for sellers when Stock is on.</li>
+<li>Made-up names end in &quot;(Demo)&quot; and demo invoices are numbered DEMO-0001 and on, so your own invoice numbers carry on as if they were not there.</li>
+<li>Delete All Demo Data takes away exactly what was added, with one button on the Demo Data page or on the dashboard banner shown while demo data is in use. A demo client, supplier, category or stream that one of your own records now uses is kept.</li>
+<li>The installer&#039;s Your Business step can add demo data straight away.</li>
+<li>Tests: Money 66, core 65.</li>
+</ul>
+<h3>1.45.0 - Email import from any provider</h3>
+<p>Update package: install from System &gt; Updates. No database changes.</p>
+<ul>
+<li>Email Import now works with any mailbox that offers IMAP, not just Gmail. Settings &gt; Email Import has buttons that fill in the server, port, security and bin folder for Gmail, Yahoo, iCloud, AOL, Zoho, Fastmail and IONOS, or type in any other server.</li>
+<li>Both kinds of secure connection: SSL/TLS (usually port 993) and STARTTLS (usually port 143).</li>
+<li>The tips say where each provider makes an app password. Outlook, Hotmail and Microsoft 365 no longer let other apps sign in with a password, so the tips explain forwarding receipts to another mailbox instead.</li>
+<li>If the bin folder you name is not found, the folder the server marks as its bin is used.</li>
+<li>Clearer messages when the server cannot be reached or refuses the sign-in.</li>
+<li>All wording now speaks of your mailbox rather than Gmail.</li>
+<li>Tests: Money 65, core 65.</li>
+</ul>
+<h3>1.44.0 - Bank statement import</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds tables for bank layouts and imports).</p>
+<ul>
+<li>New page: Money &gt; Bank Import. Load a statement downloaded from online banking: a CSV from any bank, or an OFX or QFX file. Say which account it is for, so the same account is always matched.</li>
+<li>CSV columns are found by their names (date, description, amount, or paid in and paid out), even with lines above them. When a bank uses other names, choose the columns and the date style once and save the layout: statements from that bank are read by themselves after that.</li>
+<li>Review every line before anything is added. Money out becomes an expense and money in a payment, with the title and category to change. Lines already added from an earlier statement are marked Already Added and can never be added again, so overlapping statements are safe. A line with the same amount as an expense or payment you typed in yourself a few days either side is marked Check and left unticked (Settings &gt; Money &gt; Bank Import sets how many days). Money in that matches what is left on an open invoice is counted against that invoice.</li>
+<li>Rules, in rows you can reorder: when a description contains your words, the line gets that category, stream and title. The first rule that matches wins. Rules save in the background.</li>
+<li>Set the category of all ticked lines at once. Long statements are sent as one list so nothing is lost.</li>
+<li>Recent Imports: take back an import that went wrong, moving what it added to the bin.</li>
+<li>With VAT registered, imported lines get your starting VAT choices.</li>
+<li>Tests: Money 64, core 65.</li>
+</ul>
+<h3>1.43.0 - Stock for sellers</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds the stock tables).</p>
+<ul>
+<li>Settings &gt; Money &gt; Features: Stock, with the starting warning level for new items. Business Setup and the installer ask about it too.</li>
+<li>New page: Money &gt; Stock. Your items with what is left, the cost each (the average of what you paid), the value, the sell price and the margin, marked In Stock, Low or Out Of Stock. Filters are remembered; ticked items can be archived, brought back, deleted or given a warning level. Each item shows every movement.</li>
+<li>New items start with how many you have now and what each cost. Add Or Take Out handles damaged, used, returned or found stock, with a reason.</li>
+<li>Expenses have Stock Bought lines (rows to add, remove and reorder): each item comes in at its cost each, or a share of the amount by quantity, without VAT you reclaim.</li>
+<li>Invoice lines can come from stock: picking an item fills in its name, price and unit, and the quantity goes out while the invoice is sent (not as a draft or cancelled). Payments with no invoice have Sold From Stock lines. Deleting a payment or an expense puts its stock back.</li>
+<li>Stock Count: type what is on the shelf for a day; differences are saved as a count, in the background.</li>
+<li>With traditional accounting, the change in stock value over each tax year changes your cost of goods (a rise lowers costs), in every profit figure. On the cash basis nothing changes, as goods count when you pay for them.</li>
+<li>The dashboard&#039;s Needs A Look card lists items that are low or out of stock.</li>
+<li>Repeating rows in forms now also work inside pop-up forms.</li>
+<li>Tests: Money 63, core 65.</li>
+</ul>
+<h3>1.42.0 - CIS for builders</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds CIS columns and a table for monthly notes).</p>
+<ul>
+<li>New page: Settings &gt; CIS. Say contractors pay you under the Construction Industry Scheme and at what rate (20%, 30% or gross payment status), and whether you pay subcontractors under CIS, with your employer&#039;s reference for their statements. Business Setup and the installer ask about CIS too.</li>
+<li>Clients and Suppliers: mark a client as a CIS contractor (with the rate they take off) or a supplier as a subcontractor you pay (with their UTR or verification number).</li>
+<li>Invoices: choose the CIS rate (picked for you from the client), and mark each line as labour or materials. The deduction is worked out on the labour after any discount, never on materials or VAT, and shown on the invoice page, the PDF and the pay page. The client is asked for the total less the deduction, and paying that settles the invoice. Statements to clients show the same.</li>
+<li>Payments with no invoice have CIS Taken Off and Materials boxes, filled from the contractor&#039;s statement.</li>
+<li>Your income now counts the full amount before CIS, and the deductions come off your tax on the Tax Estimate as tax already paid, with &quot;Left To Pay After CIS&quot; or the refund HMRC owes you, payments on account worked out after them, and the same on the dashboard and in the accountant pack.</li>
+<li>Paying subcontractors: expenses have CIS You Took Off and Materials boxes; the cost is what they were paid plus the deduction.</li>
+<li>New page: Money &gt; CIS. The tax months of the year (6th to 5th) down the left. For each: what each contractor paid you and took off, with a check of the rate and a tick when their statement arrives; what you paid each subcontractor and took off, a payment and deduction statement to print for each, what to pay HMRC by the 22nd, and your monthly return to mark as filed by the 19th. A CSV of the whole year. The dashboard reminds you of each return from the first month you pay a subcontractor.</li>
+<li>VAT: the construction reverse charge is now a VAT choice for those under CIS. The invoice adds no VAT and says &quot;Reverse charge: customer to account for VAT to HMRC&quot;; reverse charge costs add the VAT to box 1 and box 4 of your return. A client paying under CIS pays the VAT in full, as it is never part of the deduction.</li>
+<li>Report downloads include CIS columns when you use CIS.</li>
+<li>Tests: Money 62, core 65.</li>
+</ul>
+<h3>1.41.0 - VAT</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds VAT columns and a table for filed returns).</p>
+<ul>
+<li>New page: Settings &gt; VAT. Say you are registered, your VAT number (printed on invoices), the date you registered from (records before it have no VAT), your VAT periods (three quarter patterns or monthly), your scheme (standard or Flat Rate, with your flat rate, the limited cost trader rate and 1% off in the first year), cash accounting, and the starting VAT for new invoice lines and new expenses. Only the settings that apply are shown.</li>
+<li>Invoices: each line has a VAT rate (standard, reduced, zero, exempt or outside the scope). The invoice works out the VAT, takes a discount&#039;s share off it, and shows the rate on each line, the VAT total and your VAT number on the invoice page, the PDF and the client&#039;s pay page. Changing the bill date works the VAT out again.</li>
+<li>Expenses and payments with no invoice have a VAT rate and amount. Leave the amount empty and it is worked out from the total; type it when the receipt shows a different figure. Ticked expenses can have their VAT set together.</li>
+<li>Profit now leaves VAT out everywhere: the dashboard, cards, tax estimate, reports and the accountant pack. On the Flat Rate Scheme takings count less your flat rate, and VAT on costs is not reclaimed except on equipment of £2,000 or more. Equipment is counted without VAT you reclaim.</li>
+<li>New page: Money &gt; VAT. Your VAT periods are a list on the left, marked Now, To File, Late or Filed. Each shows the nine boxes worked out from your records (by invoice date, or by money in and out with cash accounting), what you pay HMRC or HMRC owes you, the due date, every sale and cost behind the figures, a CSV download and a print view. Mark a return as filed in the background with the date and HMRC reference; a copy of the figures is kept, and the page points out any records changed after filing.</li>
+<li>Not registered: Money &gt; VAT watches your last 12 months&#039; takings against the registration threshold, with a warning point you choose (80% to start), and explains when you must register.</li>
+<li>The dashboard&#039;s Needs A Look card says when a VAT return is due or late, or when your takings are near the threshold.</li>
+<li>Report downloads include VAT columns when you are registered.</li>
+<li>Settings now have a date box type that opens the styled date picker.</li>
+<li>Tests: Money 61, core 65.</li>
+</ul>
+<h3>1.40.0 - Equipment and capital allowances</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds the equipment table).</p>
+<ul>
+<li>New page: Money &gt; Equipment. A register of tools, computers, machinery, furniture, vans, motorcycles and cars bought to keep. Every expense filed to &quot;Equipment and vehicles bought&quot; appears there by itself and follows its expense, so nothing is claimed twice. You can also add things by hand, with the date, cost, business share, whether it was new, CO2 for cars, the vehicle it belongs to, and when it was sold and for how much.</li>
+<li>Settings &gt; Money &gt; Your Tax: How Your Accounts Are Kept. Cash basis (the starting choice for most sole traders) claims equipment in full in the year it is bought, by its business share, and a sale later counts as income. Traditional accounting uses the Annual Investment Allowance up to the yearly limit, the 40% first year allowance on new equipment above it (from 1 January 2026), and the main and special rate pools. Cars always get capital allowances: by CO2 into the main or special rate pool, 100% for new zero-emission cars, and their own pool when used privately. Sales come off the pools, with balancing allowances and charges.</li>
+<li>The claims count everywhere profit does: the dashboard, quarter and month cards, the tax estimate, reports and the accountant pack (as &quot;Equipment Claims&quot;).</li>
+<li>The Equipment page shows each tax year&#039;s claim, how it adds up, and what is left in each pool, with filters that are remembered, ticked rows that can change kind, and edit and delete on every row.</li>
+<li>A car or van linked to a vehicle in the mileage log counts as having had allowances, so it can no longer use the mileage rate (HMRC&#039;s rule), and the vehicle comparison uses the real allowance.</li>
+<li>Settings &gt; Tax Rules has a new Equipment and Capital Allowances card for each year: the Annual Investment Allowance, the main and special pool rates (main pool 14% from 2026-27, 18% before), first year allowances, the car CO2 limit and the small pool limit.</li>
+<li>Tests: Money 60, core 65.</li>
+</ul>
+<h3>1.39.0 - Tax rules for each tax year</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot; (adds one small table; any rates you changed before are kept for this tax year).</p>
+<ul>
+<li>New page: Settings &gt; Tax Rules. Each tax year has its own rates: Income Tax for England, Wales and Northern Ireland, Scottish bands, Class 4 and Class 2 National Insurance, the trading allowance, payments on account, the Making Tax Digital limit, mileage rates and the working-from-home flat rate. 2024-25, 2025-26 and 2026-27 are built in. The years are a list on the left; lists such as the Scottish bands are rows you can add, remove and drag. Save works in the background. Add The Next Year copies the newest year to check, and Back To Built-In undoes your changes. A year with no rates of its own uses the year before and says so.</li>
+<li>Settings &gt; Money &gt; Your Tax: where you pay Income Tax (England, Wales Or Northern Ireland, or Scotland), expenses or the £1,000 trading allowance (or whichever leaves the lower profit), and voluntary Class 2 when profits are below the small profits threshold.</li>
+<li>Settings &gt; Money &gt; Working From Home: claim the business share of your bills, or HMRC&#039;s flat rate a month. With the flat rate, set the hours you work at home on the Tax Estimate page; bills filed to &quot;Use of home&quot; are then left out because the flat rate covers them.</li>
+<li>Tax Estimate: Scottish rates, other income (wages or a pension) and the tax already taken off it, the trading allowance compared with your costs, When To Pay (the January balance with payments on account, and July), a note on Class 2 and your State Pension, and whether Making Tax Digital is likely to apply (from your income two years before). Your figures save in the background and the estimate updates without reloading.</li>
+<li>The dashboard, reports, accountant pack and mileage all use the rates of the right tax year.</li>
+<li>Tests: Money 57, core 65.</li>
+</ul>
+<h3>1.38.0 - A clean start for every business</h3>
+<p>Update package: install from System &gt; Updates. No database changes.</p>
+<ul>
+<li>The import from another invoicing program is removed, with its page, menu entry and search words. Anything already imported stays.</li>
+<li>Every example, placeholder, search word and email sample now uses neutral names, such as &quot;Northwind Ltd&quot; for a client and &quot;Your Business&quot; for you.</li>
+<li>Email Import&#039;s Add Example Rules now gives four rules that suit any business: parking receipts, supplier invoices with a PDF, software subscriptions and fuel receipts. Each is meant to be changed to suit.</li>
+<li>The changelog before 1.37.0 is now a short summary of what the app does.</li>
+<li>Tests: Money 53, core 65.</li>
+</ul>
+<h3>1.37.0 - Set up for your kind of work</h3>
+<p>Update package: install from System &gt; Updates, then press &quot;Finish update&quot;.</p>
+<ul>
+<li>New installs: the installer has a Your Business step after the admin account. Choose Ready For My Kind Of Work or Fresh Start. Pick one or more kinds of work (Driver Or Courier, Tradesperson Or Builder, Freelancer Or Creative, Retail Or Online Seller, Consultant Or Professional, Hair and Beauty, Cleaning and Home Services, Something Else), say whether you use a vehicle for work and whether you work from home, and type your business name and email.</li>
+<li>Before anything is added it shows exactly what will be added: expense categories with the box each goes in on the tax return, income streams, ways of getting paid and ways of paying, each with a tick box to leave it out. The dashboard cards can be set to suit the work (for example Fuel This Month for drivers, Materials This Tax Year for trades).</li>
+<li>New page: Money &gt; Business Setup does the same at any time, for sites already in use or after a Fresh Start. It only adds: anything with the same name is left exactly as it is, and running it again adds nothing twice. It works in the background without reloading, and remembers which kinds of work were set up. Found with the top-bar search (&quot;setup trade driver freelancer seller&quot;).</li>
+<li>A banner on the dashboard offers Business Setup until it has been run, with Not Now to hide it for good.</li>
+<li>Settings &gt; Money &gt; Features: Vehicles and Mileage can be switched off. Vehicles and the Mileage Log leave the menu, and the vehicle box leaves expenses, the expense filter, scheduled reports and custom fields. Nothing is deleted, and an expense that already has a vehicle keeps its box.</li>
+<li>New sites start with an empty business name (the site name is used until one is typed) and a plain &quot;Paid by&quot; list.</li>
+<li>For module authors: a module can add its own installer step (&#039;install_step&#039; in module.php), and a menu item can hide while a feature is off (&#039;when&#039; =&gt; fn(): bool).</li>
+<li>The installer&#039;s Options page now starts with the modules that are on by default ticked.</li>
+<li>Tests: Money 57, core 65.</li>
+</ul>
+<h3>1.36.5 and earlier - The foundation</h3>
+<p>Everything the app could do before the Business Setup, in short:</p>
+<ul>
+<li>Money: invoices with items, discounts, repeating invoices and automatic numbers; payments, with part payments and a searchable invoice picker; expenses with receipts, business share, repeating costs and bulk changes; clients and suppliers with statements and a private client portal; income streams; categories filed to the boxes of the Self Assessment self-employment pages.</li>
+<li>Pay online: invoices emailed with a private pay page for card (Stripe, with Apple Pay and Google Pay), PayPal or bank transfer, test modes, receipts and overdue reminders.</li>
+<li>Vehicles and a mileage log, with the HMRC mileage rate or actual costs compared side by side.</li>
+<li>Tax estimate (Income Tax and Class 4 National Insurance), quarterly update cards, an arrangeable dashboard with ready-made and home-made cards and ten card styles.</li>
+<li>Reports, CSV downloads, an accountant pack (by download or email, also once a year by itself), scheduled reports emailed as PDFs, a weekly digest and reminders in the notification bell.</li>
+<li>Email Import rules that turn receipt and invoice emails into expenses, a Receipt Inbox for phone photos, and custom fields on every form.</li>
+<li>Records only: nothing is ever sent to HMRC.</li>
+<li>The framework underneath: installer and one-click updates with roll back, admin with search, settings and system menus, roles and access, two-step sign-in, email sending and templates, scheduled tasks, health check and monitoring, logs, media library, pages, menus, footer builder, maps, newsletter sign-up, languages, SEO, cookie notice, spam protection and an installable app.</li>
+</ul>
+</section>
+<p class="foot">Money 1.47.0 manual. Tax rules change each year: check the figures in Settings &gt; Tax Rules against gov.uk every April.</p>
+</main>
+</div>
+<script>(function(){
+  var find=document.querySelector('[data-find]'),secs=[].slice.call(document.querySelectorAll('[data-doc]')),links=[].slice.call(document.querySelectorAll('[data-nav]')),none=document.querySelector('[data-none]');
+  if(find){find.addEventListener('input',function(){var w=find.value.toLowerCase().trim().split(/\s+/).filter(Boolean),shown=0;
+    secs.forEach(function(s){var ok=w.every(function(x){return s.getAttribute('data-words').indexOf(x)!==-1;});s.hidden=!ok;if(ok){shown++;}});
+    links.forEach(function(a){var s=document.getElementById(a.getAttribute('data-nav'));a.hidden=s?s.hidden:false;});
+    document.querySelectorAll('[data-grp]').forEach(function(g){g.hidden=!g.querySelector('a:not([hidden])');});
+    if(none){none.style.display=shown?'none':'block';}});}
+  function mark(){var y=window.scrollY+40,cur=null;secs.forEach(function(s){if(!s.hidden&&s.offsetTop<=y){cur=s.id;}});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('data-nav')===cur);});}
+  window.addEventListener('scroll',mark,{passive:true});mark();
+  var b=document.querySelector('[data-menu]'),nav=document.querySelector('aside nav');
+  if(b&&nav){b.addEventListener('click',function(){nav.classList.toggle('shut');});if(window.innerWidth<900){nav.classList.add('shut');}}
+})();</script>
+</body>
+</html>

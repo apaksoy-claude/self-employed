@@ -21,6 +21,8 @@ $layout = Widgets::layout();
     </div>
 
 
+    <?php if (!empty($tour)): ?><?php $this->include('money::_tour', ['steps' => $tour]); ?><?php endif; ?>
+
     <?php if (!empty($demoBanner)): ?>
     <div class="su-banner dm-banner">
         <span class="su-banner-icon"><i class="fa-solid fa-flask" aria-hidden="true"></i></span>

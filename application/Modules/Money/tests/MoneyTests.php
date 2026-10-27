@@ -3142,6 +3142,66 @@ final class MoneyTests
         return '';
     }
 
+    public function test_the_help_centre_tour_and_manual_explain_every_part(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $H = \AP\Modules\Money\Help::class;
+            $all = $H::articles();
+            $menu = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'url');
+            foreach ($all as $k => $a) {
+                $this->assert($a['title'] !== '' && $a['intro'] !== '' && strlen($a['body']) > 200 && isset($H::GROUPS[$a['group']]), $k . ' has a title, intro and body');
+                foreach (explode(' ', $a['title']) as $w) {
+                    $this->assert($w === 'and' || !preg_match('/^[a-z]/', $w), $k . ' title is in Title Case: ' . $a['title']);
+                }
+                $this->assert($a['url'] === '' || in_array($a['url'], $menu, true) || in_array($a['url'], ['settings/money', 'money/setup', 'users', 'system/updates', 'money/contacts', 'money/email-import', 'money/custom-fields', 'money/stock', 'money/cis', 'money/vehicles'], true), $k . ' points at a real page: ' . $a['url']);
+            }
+            foreach (['money/invoices', 'money/expenses', 'money/bank', 'money/vat', 'money/cis', 'money/stock', 'money/equipment', 'money/tax', 'money/reports', 'money/demo'] as $page) {
+                $this->assert(in_array($page, array_column($all, 'url'), true), 'there is an article for ' . $page);
+            }
+            $hc = new \AP\Modules\Money\Controllers\HelpController();
+            $get = static fn(array $q = []) => new Request('GET', '/admin/money/help', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $home = $hc->index($get());
+            $this->assert($home->status === 200 && str_contains($home->body, 'Welcome To Money') && str_contains($home->body, 'data-help-filter') && str_contains($home->body, 'Show The Tour Again'), 'the Help Centre opens on Welcome');
+            $vat = $hc->index($get(), 'vat')->body;
+            $this->assert(str_contains($vat, 'Mark As Filed') && str_contains($vat, 'Open This Page') && str_contains($vat, 'is-on'), 'an article opens with its page link');
+            $found = $hc->index($get(['q' => 'mileage rate']))->body;
+            $this->assert(str_contains($found, 'Results For') && str_contains($found, 'Vehicles and Mileage'), 'the help can be searched');
+            $threw = false;
+            try {
+                $hc->index($get(), 'no-such-thing');
+            } catch (\AP\Core\HttpException) {
+                $threw = true;
+            }
+            $this->assert($threw, 'an unknown article is not found');
+            $hits = ((require __DIR__ . '/../module.php')['search']['money_help']['handler'])('bank statement', 4);
+            $this->assert($hits && $hits[0]['url'] === admin_url('money/help/bank-import'), 'the top-bar search finds help: ' . json_encode(array_column($hits, 'title')));
+            // The tour: on the dashboard the first time, then remembered.
+            $tour = $H::tour();
+            $this->assert(count($tour) === count($H::TOUR) && $tour[0]['title'] === 'Welcome To Money' && $tour[1]['text'] !== '', 'the tour has its steps');
+            $dash = \AP\Modules\Money\Dashboard::html();
+            $this->assert(str_contains($dash, 'data-tour') && str_contains($dash, 'Step 1 of ' . count($tour)) && str_contains($dash, 'Skip The Tour'), 'the tour shows the first time');
+            $done = $hc->tour(new Request('POST', '/x', [], ['done' => '1'], [], ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json']));
+            $this->assert(json_decode($done->body, true)['ok'] && $H::tourDone(1) && !str_contains(\AP\Modules\Money\Dashboard::html(), 'data-tour'), 'finished or skipped, it does not come back');
+            $hc->tour(new Request('POST', '/x', [], ['done' => '0'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(!$H::tourDone(1) && str_contains(\AP\Modules\Money\Dashboard::html(), 'data-tour'), 'Show The Tour Again brings it back');
+            $s->set('money.tour_on', false);
+            $this->assert(!str_contains(\AP\Modules\Money\Dashboard::html(), 'data-tour'), 'the tour can be switched off in Settings');
+            // The manual is built from the same articles and is up to date.
+            $out = [];
+            $code = 1;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(dirname(__DIR__, 4) . '/tools/build-docs.php') . ' --check', $out, $code);
+            $this->assert($code === 0, 'documentation/index.html matches the Help Centre and the changelog: ' . implode(' ', $out));
+            $doc = (string) file_get_contents(dirname(__DIR__, 4) . '/documentation/index.html');
+            foreach ($all as $k => $a) {
+                $this->assert(str_contains($doc, 'id="' . $k . '"') && str_contains($doc, htmlspecialchars($a['title'], ENT_QUOTES)), 'the manual has ' . $a['title']);
+            }
+            $this->assert(str_contains($doc, 'Installing Money') && str_contains($doc, 'Version ' . AP_VERSION) && str_contains($doc, 'What Is New'), 'the manual has installing, the version and the changelog');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.47.0 - Help Centre, getting-started tour and manual
+Update package: install from System > Updates. No database changes.
+- New page: Money > Help Centre. An article for every part of Money in plain words, with the path to each page, numbered steps and tips: getting started, Business Setup, demo data, the dashboard, invoices, payments, expenses, the Receipt Inbox, bank and email import, clients and suppliers, categories and streams, equipment, vehicles and mileage, working from home, stock, the Tax Estimate, VAT, CIS, reports, custom fields, settings, users and access, updates and backups, and questions and answers. Topics are a list on the left that narrows as you type, and each article opens its page.
+- The admin's top-bar search finds help articles too.
+- Getting-started tour: the first time someone signs in, the dashboard walks them through each part of Money in ten short steps, with Back, Next and Skip. It is remembered for each person, can be shown again from the Help Centre, and can be switched off in Settings > Money > Getting Started.
+- New manual: documentation/index.html, a single page to open in any browser or print, with installing, updating, tasks that run by themselves, privacy and security, every Help Centre article, the words used, and what is new in each version. It is built from the same articles as the Help Centre (php tools/build-docs.php), so the two always agree.
+- Settings section names are now in Title Case, and the Invoice PDF Look tips point to the right place for your business details.
+- Tests: Money 67, core 65.
+
 ## 1.46.0 - Demo data for trials
 Update package: install from System > Updates, then press "Finish update" (adds one small table).
 - New page: Money > Demo Data. Add about a year of made-up records to try Money out, made for the kind of work you choose: clients and suppliers, invoices (paid, part paid and still open) with payments, or weekly takings for drivers, sellers and salons, five to eight expenses a month across your own categories, a vehicle with a mileage log, a laptop as equipment, and stock items for sellers when Stock is on.

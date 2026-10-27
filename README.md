@@ -31,6 +31,9 @@ Admin > Settings > Email: choose SMTP (recommended) or PHP mail(). Then Admin > 
 - Languages: visitors switch with `/lang/<code>` or the switcher; there are no per-language URLs like `/fr/...` yet.
 - Deferred: route caching, email-code 2FA, member front end (Phase 2 follow-up), upload validation service (1.2.0).
 
+## Manual
+`documentation/index.html` is the manual for Money: open it in a browser or print it. It is built from the Help Centre articles (`application/Modules/Money/Help.php`) and `CHANGELOG.md` by `php tools/build-docs.php`; `php tools/build-docs.php --check` says whether it is up to date, and the Money tests check it too.
+
 ## Building modules
 Run `php ap make:module Name` to start one (or copy a small module such as `application/Modules/Footer`). A module is a folder with `module.php` (metadata, permissions, menu, settings, widgets), `routes.php`, controllers, views, `lang/en.php` and `migrations/`.
 

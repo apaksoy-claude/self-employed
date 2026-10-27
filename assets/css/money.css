@@ -520,3 +520,48 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .dm-counts span { color: var(--mn-sub); font-size: .8rem; }
 .dm-banner { background: #fff6e2; border-color: #f6dfa8; }
 .dm-banner .su-banner-icon { background: #fdecc8; color: #8a5800; }
+
+/* Help Centre */
+.hp-nav { gap: 0; }
+.hp-search { padding: 2px 2px 8px; }
+.hp-group + .hp-group { margin-top: 8px; }
+.hp-group-name { display: block; padding: 6px 12px 4px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+.hp-nav a span i { color: var(--ap-accent); width: 1.1rem; text-align: center; }
+.hp-main { display: grid; gap: 1rem; min-width: 0; }
+.hp-article > header { align-items: flex-start; }
+.hp-article h1 { font-size: 1.35rem; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.hp-article h1 i { color: var(--ap-accent); margin-right: .55rem; }
+.hp-article > header p { font-size: .95rem; margin-top: .3rem; }
+.hp-body { font-size: .95rem; line-height: 1.6; color: #1f2937; max-width: 52rem; }
+.hp-body h3 { font-size: 1.02rem; font-weight: 650; margin: 1.4rem 0 .5rem; }
+.hp-body ul, .hp-body ol { padding-left: 1.25rem; }
+.hp-body li { margin: .3rem 0; }
+.hp-body .path { display: inline-block; font-size: .82rem; font-weight: 600; color: #1d4ed8; background: #eaf1ff; border-radius: 999px; padding: .2rem .75rem; margin-bottom: .6rem; }
+.hp-body ol.steps { list-style: none; counter-reset: step; padding-left: 0; }
+.hp-body ol.steps li { counter-increment: step; position: relative; padding: .6rem .9rem .6rem 3rem; border-radius: 12px; background: #F5F6FA; margin: .45rem 0; }
+.hp-body ol.steps li::before { content: counter(step); position: absolute; left: .8rem; top: .55rem; width: 1.6rem; height: 1.6rem; border-radius: 8px; background: var(--ap-accent); color: #fff; font-weight: 700; font-size: .85rem; display: flex; align-items: center; justify-content: center; }
+.hp-body .tip { margin: 1rem 0; padding: .75rem 1rem; border-radius: 12px; background: #fff6e2; border: 1px solid #f6dfa8; color: #7a4d00; }
+.hp-body .badge { font-size: .75rem; }
+.hp-body .badge.danger { background: #dc3545; color: #fff; } .hp-body .badge.warning { background: #f59e0b; color: #fff; } .hp-body .badge.success { background: #16a34a; color: #fff; } .hp-body .badge.dark { background: #1f2937; color: #fff; }
+.hp-results { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.hp-results a { display: flex; gap: .8rem; align-items: flex-start; padding: .7rem .9rem; border-radius: 12px; background: #F5F6FA; text-decoration: none; color: inherit; }
+.hp-results i { color: var(--ap-accent); margin-top: .2rem; }
+.hp-results small { display: block; color: #6b7280; }
+.hp-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; }
+
+/* The getting-started tour */
+.tu-back { position: fixed; inset: 0; z-index: 1080; background: rgba(15, 23, 42, .38); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.tu-card { width: min(520px, 100%); background: #fff; border-radius: 20px; padding: 1.6rem 1.6rem 1.1rem; border: 1px solid #e3e6ee; }
+.tu-icon { display: inline-flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; border-radius: 14px; background: color-mix(in srgb, var(--ap-accent) 12%, #fff); color: var(--ap-accent); font-size: 1.3rem; }
+.tu-count { margin: .9rem 0 .1rem; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #6b7280; }
+.tu-step h2 { font-size: 1.3rem; font-weight: 650; margin: 0 0 .5rem; }
+.tu-step p { color: #374151; line-height: 1.55; }
+.tu-open { font-weight: 600; text-decoration: none; }
+.tu-dots { display: flex; gap: 6px; justify-content: center; margin: 1rem 0 .6rem; }
+.tu-dots span { width: 8px; height: 8px; border-radius: 999px; background: #e5e7eb; }
+.tu-dots span.is-on { width: 22px; background: var(--ap-accent); }
+.tu-foot { display: flex; align-items: center; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+.tu-nav { display: flex; gap: .5rem; }
+.hp-nav .hp-group a { color: #374151; }
+.hp-nav .hp-group a.is-on { color: #1d4ed8; }
+.hp-search .form-control { width: 100%; }

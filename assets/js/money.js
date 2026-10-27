@@ -681,3 +681,53 @@ document.addEventListener('change', function (e) {
   });
   count();
 })();
+
+// The getting-started tour: one step at a time; finishing or skipping it is remembered in the background.
+(function () {
+  var tour = document.querySelector('[data-tour]');
+  if (!tour) { return; }
+  var steps = tour.querySelectorAll('[data-tour-step]'), dots = tour.querySelectorAll('[data-tour-dot]');
+  var back = tour.querySelector('[data-tour-back]'), next = tour.querySelector('[data-tour-next]'), label = tour.querySelector('[data-tour-next-label]');
+  var at = 0;
+  document.body.style.overflow = 'hidden';
+  function show(i) {
+    at = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach(function (s, k) { s.hidden = k !== at; });
+    dots.forEach(function (d, k) { d.classList.toggle('is-on', k === at); });
+    back.disabled = at === 0;
+    label.textContent = at === steps.length - 1 ? 'Finish' : 'Next';
+    tour.setAttribute('aria-labelledby', 'tu-title-' + at);
+    next.focus();
+  }
+  function done() {
+    var body = new FormData(); body.append('done', '1'); body.append('_token', tour.getAttribute('data-token'));
+    if (window.fetch) { fetch(tour.getAttribute('data-done-url'), { method: 'POST', body: body, credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }); }
+    tour.remove(); document.body.style.overflow = '';
+  }
+  next.addEventListener('click', function () { if (at === steps.length - 1) { done(); } else { show(at + 1); } });
+  back.addEventListener('click', function () { show(at - 1); });
+  tour.querySelector('[data-tour-skip]').addEventListener('click', done);
+  tour.querySelectorAll('[data-tour-open]').forEach(function (a) { a.addEventListener('click', done); });
+  document.addEventListener('keydown', function (e) {
+    if (!document.body.contains(tour)) { return; }
+    if (e.key === 'Escape') { done(); } else if (e.key === 'ArrowRight') { next.click(); } else if (e.key === 'ArrowLeft' && !back.disabled) { show(at - 1); }
+  });
+  show(0);
+})();
+
+// Help Centre: the topics on the left narrow down as you type.
+(function () {
+  var box = document.querySelector('[data-help-filter]');
+  if (!box) { return; }
+  box.addEventListener('input', function () {
+    var words = box.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    document.querySelectorAll('[data-help-group]').forEach(function (g) {
+      var any = false;
+      g.querySelectorAll('[data-help-item]').forEach(function (a) {
+        var ok = words.every(function (w) { return a.getAttribute('data-help-item').indexOf(w) !== -1; });
+        a.hidden = !ok; any = any || ok;
+      });
+      g.hidden = !any;
+    });
+  });
+})();
