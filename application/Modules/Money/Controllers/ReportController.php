@@ -28,7 +28,7 @@ final class ReportController
         $relief = (bool) setting('money.pension_relief', false);
         $o = Money::overview($year);
         return view('money::reports', ['title' => 'Reports', 'breadcrumbs' => ['Money' => admin_url('money/invoices'), 'Reports' => null], 'year' => $year, 'years' => Money::taxYears(), 'from' => $from, 'to' => $to,
-            'months' => Reports::months($ins, $year), 'cats' => Reports::categories($ins, $year), 't' => $t, 'est' => Tax::estimate($t['profit'], $relief ? $t['pension'] * 1.25 : 0.0), 'o' => $o,
+            'months' => Reports::months($ins, $year), 'cats' => Reports::categories($ins, $year), 't' => $t, 'est' => Tax::forYear($year, $t), 'o' => $o,
             'clients' => array_slice(Reports::byClient($year), 0, max(3, (int) setting('money.report_clients', 10))), 'aged' => Reports::aged(), 'cmp' => (bool) setting('money.report_compare', true) ? Reports::compare($ins, $year) : null,
             'canZip' => class_exists(\ZipArchive::class)]);
     }

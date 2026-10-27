@@ -41,6 +41,8 @@ use AP\Modules\Money\Import\PdfText;
 use AP\Modules\Money\Reports;
 use AP\Modules\Money\Setup;
 use AP\Modules\Money\Trades;
+use AP\Modules\Money\TaxRules;
+use AP\Modules\Money\HomeUse;
 use AP\Modules\Money\Controllers\SetupController;
 use AP\Tests\FakeAuth;
 use RuntimeException;
@@ -2364,6 +2366,162 @@ final class MoneyTests
         return '';
     }
 
+    /* -------------------------------------------------------------- tax rules by year */
+
+    public function test_tax_rules_come_per_year_and_carry_forward_until_checked(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $this->liveSettings();
+            $r = TaxRules::forYear('2026-27');
+            $this->assert($r['source'] === 'built-in' && $r['personal_allowance'] === 12570.0 && $r['mile_high'] === 55.0 && $r['c2_spt'] === 7105.0 && $r['mtd_threshold'] === 50000.0, 'built-in 2026-27');
+            $this->assert(end($r['scot_bands'])['upto'] === null && $r['scot_bands'][0]['upto'] === 3967.0 && count($r['home_rates']) === 3, 'Scottish bands and home rates as lists');
+            $this->assert(TaxRules::forYear('2025-26')['mile_high'] === 45.0 && Mileage::rates('2025-26')['high'] === 45.0 && Mileage::rates('2026-27')['high'] === 55.0, 'mileage rates follow the year');
+            $next = TaxRules::forYear('2027-28');
+            $this->assert($next['source'] === 'carried' && $next['from_year'] === '2026-27' && $next['c2_spt'] === 7105.0, 'a year with no rates uses the one before, and says so');
+            $old = TaxRules::forYear('2021-22');
+            $this->assert($old['source'] === 'carried' && $old['from_year'] === '2024-25', 'a year before the first uses the earliest');
+            // the page
+            $get = static fn(array $q = []) => new Request('GET', '/admin/money/tax-rules', $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $post = static fn(string $p, array $d, bool $json = true) => new Request('POST', $p, [], $d, [], ['HTTP_HOST' => 'localhost'] + ($json ? ['HTTP_ACCEPT' => 'application/json'] : []));
+            $c = new \AP\Modules\Money\Controllers\TaxRulesController();
+            $page = $c->index($get(['year' => '2026-27']));
+            $this->assert($page->status === 200 && str_contains($page->body, 'Income Tax: Scotland') && str_contains($page->body, 'data-name="scot_bands"') && str_contains($page->body, 'data-name="home_rates"')
+                && str_contains($page->body, 'Built In') && str_contains($page->body, 'Add 2027-28') && str_contains($page->body, 'data-bg-save'), 'the Tax Rules page shows the year with its lists and a background save');
+            $form = $page->body;
+            $data = ['year' => '2026-27'];
+            foreach (array_keys(TaxRules::NUMBERS) as $k) {
+                $data[$k] = (string) $r[$k];
+            }
+            $data['mile_high'] = '60';
+            $data['scot_bands'] = [['name' => 'Starter', 'upto' => '4000', 'rate' => '19'], ['name' => 'Top', 'upto' => '', 'rate' => '48'], ['name' => 'Basic', 'upto' => '17000', 'rate' => '20']];
+            $data['home_rates'] = [['from' => '25', 'to' => '50', 'monthly' => '11']];
+            $bad = $c->save($post('/admin/money/tax-rules/save', ['mile_high' => 'abc'] + $data));
+            $this->assert($bad->status === 422 && isset(json_decode($bad->body, true)['errors']['mile_high']), 'a wrong figure is refused and marked');
+            $noTop = $data;
+            $noTop['scot_bands'] = [['name' => 'Starter', 'upto' => '4000', 'rate' => '19']];
+            $this->assert(isset(json_decode($c->save($post('/x', $noTop))->body, true)['errors']['scot_bands']), 'the Scottish bands need an open top band');
+            $ok = json_decode($c->save($post('/x', $data))->body, true);
+            $saved = TaxRules::forYear('2026-27');
+            $this->assert($ok['ok'] && $saved['source'] === 'saved' && $saved['mile_high'] === 60.0 && Mileage::rates('2026-27')['high'] === 60.0, 'saved for that year only');
+            $this->assert(array_column($saved['scot_bands'], 'name') === ['Starter', 'Basic', 'Top'] && $saved['home_rates'][0]['monthly'] === 11.0, 'bands are put in order');
+            $this->assert(TaxRules::forYear('2025-26')['mile_high'] === 45.0 && TaxRules::forYear('2027-28')['mile_high'] === 60.0, 'other years keep theirs; the next year now carries yours');
+            $copy = $c->copy($post('/x', ['year' => '2026-27', 'to' => '2027-28'], false));
+            $this->assert($copy->status === 302 && TaxRules::forYear('2027-28')['source'] === 'saved' && TaxRules::forYear('2027-28')['mile_high'] === 60.0, 'copying makes the next year its own');
+            $c->restore($post('/x', ['year' => '2026-27'], false));
+            $this->assert(TaxRules::forYear('2026-27')['source'] === 'built-in' && TaxRules::forYear('2026-27')['mile_high'] === 55.0, 'Back To Built-In');
+            $this->assert(TaxRules::nextYear('2026-27') === '2027-28' && in_array('2027-28', TaxRules::years(), true), 'years list');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), null, 'url');
+            $this->assert(($items['money/tax-rules']['hub'] ?? '') === 'settings' && str_contains((string) $items['money/tax-rules']['keywords'], 'scottish'), 'Tax Rules sits in the Settings menu and the search finds it');
+        });
+        return '';
+    }
+
+    public function test_the_estimate_handles_scotland_other_income_the_trading_allowance_and_payments_on_account(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $r = Tax::rates('2026-27');
+            $e = Tax::estimate(30000, 0, $r, ['region' => 'ruk']);
+            $this->assert($e['income_tax'] === 3486.0 && $e['class4'] === 1045.8, 'England 30,000');
+            $sc = Tax::estimate(30000, 0, $r, ['region' => 'scotland']);
+            $this->assert($sc['income_tax'] === 3451.07 && $sc['class4'] === 1045.8, 'Scotland 30,000 in 2026-27 band by band: ' . $sc['income_tax']);
+            $sc2 = Tax::estimate(80000, 0, $r, ['region' => 'scotland']);
+            $this->assert(abs($sc2['income_tax'] - (753.73 + 2597.8 + 2968.56 + 13161.96 + 2250.0)) < 0.02, 'Scotland 80,000 reaches the advanced rate: ' . $sc2['income_tax']);
+            $w = Tax::estimate(20000, 0, $r, ['region' => 'ruk', 'other_income' => 30000, 'other_tax' => 3486]);
+            $this->assert($w['income_tax_all'] === 7486.0 && $w['income_tax'] === 4000.0 && $w['class4'] === 445.8, 'wages use up the allowance; tax already taken off is credited');
+            // trading allowance
+            $t = ['income' => 1500.0, 'costs' => 100.0, 'profit' => 1400.0, 'pension' => 0.0];
+            $this->assert(Tax::forYear('2026-27', $t)['method'] === 'allowance' && Tax::forYear('2026-27', $t)['profit'] === 500.0, 'the allowance is used when it leaves less profit');
+            $t2 = ['income' => 5000.0, 'costs' => 3000.0, 'profit' => 2000.0, 'pension' => 0.0];
+            $this->assert(Tax::forYear('2026-27', $t2)['method'] === 'expenses', 'real costs are used when they are bigger');
+            $s->set('money.trading_allowance', 'allowance');
+            $this->assert(Tax::forYear('2026-27', $t2)['profit'] === 4000.0, 'or always the allowance when chosen');
+            $s->set('money.trading_allowance', 'best');
+            // payments on account
+            $big = Tax::forYear('2026-27', ['income' => 40000.0, 'costs' => 10000.0, 'profit' => 30000.0, 'pension' => 0.0]);
+            $this->assert($big['poa']['needed'] && $big['poa']['each'] === 2265.9 && $big['poa']['jan_date'] === '2028-01-31' && $big['poa']['jul_date'] === '2028-07-31'
+                && $big['poa']['january'] === round(4531.8 + 2265.9, 2), 'January brings the balance and the first payment on account');
+            TaxRules::savePersonal('2026-27', ['poa_paid' => 1000]);
+            $this->assert(Tax::forYear('2026-27', ['income' => 40000.0, 'costs' => 10000.0, 'profit' => 30000.0, 'pension' => 0.0])['poa']['balancing'] === 3531.8, 'payments already made come off the balance');
+            $small = Tax::forYear('2026-27', ['income' => 15000.0, 'costs' => 0.0, 'profit' => 15000.0, 'pension' => 0.0]);
+            $this->assert(!$small['poa']['needed'] && str_contains($small['poa']['reason'], 'under'), 'no payments on account under £1,000');
+            // class 2
+            $low = Tax::estimate(5000, 0, $r);
+            $this->assert($low['below_spt'] && $low['class2'] === 0.0, 'under the threshold, Class 2 is optional');
+            $s->set('money.class2_voluntary', '1');
+            $this->assert(Tax::estimate(5000, 0, $r)['class2'] === 189.8 && Tax::estimate(9000, 0, $r)['class2'] === 0.0, 'voluntary Class 2 is added only when below it');
+            $s->set('money.class2_voluntary', '0');
+            // Scotland chosen in settings flows through
+            $s->set('money.tax_region', 'scotland');
+            $this->assert(Tax::forYear('2026-27', ['income' => 30000.0, 'costs' => 0.0, 'profit' => 30000.0, 'pension' => 0.0])['region'] === 'scotland', 'the region setting is used');
+            $s->set('money.tax_region', 'ruk');
+        });
+        return '';
+    }
+
+    public function test_working_from_home_flat_rate_replaces_household_bills_and_the_tax_page_saves_in_the_background(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            $now = '2026-06-01 00:00:00';
+            $home = (int) $db->table('money_categories')->insertGetId(['kind' => 'expense', 'name' => 'Home Electricity', 'hmrc_box' => 'home_use', 'allowable' => 1, 'active' => 1, 'created_at' => $now]);
+            $db->table('money_expenses')->insert(['expense_date' => '2026-06-01', 'title' => 'Electric', 'category_id' => $home, 'amount' => 50, 'business_percent' => 20, 'created_at' => $now, 'updated_at' => $now]);
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $before = Insights::totals(Insights::load(), $from, $to);
+            $s->set('money.home_method', 'flat');
+            TaxRules::savePersonal('2026-27', ['home_hours' => 60]);
+            $claims = HomeUse::claims('2026-08-15');
+            $this->assert(count($claims) === 4 && $claims[0]['date'] === '2026-04-30' && $claims[0]['amount'] === 18.0, 'one flat amount a month up to today: ' . json_encode($claims));
+            $after = Insights::totals(Insights::load(), $from, $to);
+            $months = count(HomeUse::claims());
+            $this->assert(abs(($after['costs'] - $before['costs']) - ($months * 18 - 10.0)) < 0.01, 'the bills filed to Use of home are swapped for the flat rate');
+            $o = Money::overview('2026-27');
+            $this->assert(($o['not_costs']['home_covered'] ?? 0) === 10.0 && ($o['home_flat'] ?? 0) === round($months * 18.0, 2), 'the overview agrees');
+            $s->set('money.home_method', 'actual');
+            $this->assert(HomeUse::claims() === [] && abs(Insights::totals(Insights::load(), $from, $to)['costs'] - $before['costs']) < 0.01, 'back to real bills');
+            // the Tax Estimate page and its figures form
+            $s->set('money.home_method', 'flat');
+            $tc = new TaxController();
+            $page = $tc->index(new Request('GET', '/admin/money/tax', ['year' => '2026-27'], [], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($page->status === 200 && str_contains($page->body, 'When To Pay') && str_contains($page->body, 'Expenses Or Trading Allowance') && str_contains($page->body, 'name="home_hours"')
+                && str_contains($page->body, 'data-bg-swap="[data-tax-body]"'), 'the page shows the new cards and the figures form');
+            $req = static fn(array $d) => new Request('POST', '/admin/money/tax/figures', [], $d, [], ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json']);
+            $bad = $tc->savePersonal($req(['year' => '2026-27', 'other_income' => 'lots']));
+            $this->assert($bad->status === 422 && isset(json_decode($bad->body, true)['errors']['other_income']), 'a wrong amount is marked');
+            $ok = json_decode($tc->savePersonal($req(['year' => '2026-27', 'other_income' => '30,000', 'other_tax' => '3486', 'poa_paid' => '', 'home_hours' => '80']))->body, true);
+            $this->assert($ok['ok'] && str_contains((string) $ok['html'], 'data-tax-body') && str_contains((string) $ok['html'], '£30,000.00') && TaxRules::personal('2026-27')['other_income'] === 30000.0
+                && TaxRules::personal('2026-27')['home_hours'] === 80, 'saved, and the updated page comes back to swap in');
+            $s->set('money.home_method', 'actual');
+        });
+        return '';
+    }
+
+    public function test_making_tax_digital_looks_at_income_two_years_before_and_old_rate_settings_are_kept(): string
+    {
+        $this->db = $this->freshDb();
+        $this->useDb($this->db, function (): void {
+            $this->liveSettings();
+            $this->db->table('money_income')->insert(['income_date' => '2024-10-01', 'title' => 'Big year', 'amount' => 60000, 'created_at' => '2024-10-01 00:00:00', 'updated_at' => '2024-10-01 00:00:00']);
+            $m = Tax::mtd('2026-27');
+            $this->assert($m['applies'] && $m['based_on'] === '2024-25' && $m['threshold'] === 50000.0, 'income of 2024-25 over £50,000 means MTD from 2026-27');
+            $this->assert(!Tax::mtd('2025-26')['applies'], 'not in force before 2026-27');
+        });
+        $db = $this->freshDb();
+        $db->pdo()->exec('CREATE TABLE ap_settings (name TEXT PRIMARY KEY, value TEXT, updated_at TEXT)');
+        $db->pdo()->exec('DROP TABLE ap_money_tax_years');
+        $db->table('settings')->insert(['name' => 'money.personal_allowance', 'value' => '13000', 'updated_at' => '2026-01-01 00:00:00']);
+        $db->table('settings')->insert(['name' => 'money.mile_high', 'value' => '50', 'updated_at' => '2026-01-01 00:00:00']);
+        (require __DIR__ . '/../migrations/2026_11_10_000001_tax_years.php')->up($db);
+        $row = $db->table('money_tax_years')->first();
+        $rules = json_decode((string) $row['rules'], true);
+        $this->assert($row && $row['year'] === Money::taxYear(gmdate('Y-m-d')) && (float) $rules['personal_allowance'] === 13000.0 && (float) $rules['mile_high'] === 50.0 && (float) $rules['c4_main'] === 6.0, 'rates changed before the update are kept for the current year');
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';
@@ -2404,6 +2562,8 @@ final class MoneyTests
             $modules->discover();
             $app->set(\AP\Core\ModuleManager::class, $modules);
             View::resetSlots();
+            TaxRules::reset();
+            Mileage::reset();
             $modules->boot($app, false, true);
             $app->set('auth', new FakeAuth());
             View::addNamespace('app', AP_ROOT . '/Views');

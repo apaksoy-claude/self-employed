@@ -152,11 +152,14 @@ final class AccountantPack
         $h .= '<h1>' . e($biz['name']) . ' - ' . ($year === 'all' ? 'All Years' : 'Tax Year ' . e($year)) . '</h1><p>' . e(Money::showDate($from === '1970-01-01' ? Money::today() : $from)) . ($from === '1970-01-01' ? '' : ' to ' . e(Money::showDate($to))) . '</p>';
         $h .= '<h2>Totals</h2><table><tr><td>Income received</td><td class="r">' . $g($t['income']) . '</td></tr><tr><td>Allowable costs</td><td class="r">' . $g($t['costs']) . '</td></tr><tr class="big"><td>Profit</td><td class="r">' . $g($t['profit']) . '</td></tr></table>';
         if ($year !== 'all') {
-            $est = Tax::estimate($t['profit'], (bool) setting('money.pension_relief', false) ? $t['pension'] * 1.25 : 0.0);
+            $est = Tax::forYear($year, $t);
             $h .= '<h2>Estimated Tax (not a tax return)</h2><table>';
-            foreach ($est as $k => $v) {
-                if (is_numeric($v) && !is_array($v)) {
-                    $h .= '<tr><td>' . e(ucfirst(str_replace('_', ' ', (string) $k))) . '</td><td class="r">' . $g((float) $v) . '</td></tr>';
+            $rows = ['Profit' . ($est['method'] === 'allowance' ? ' (using the trading allowance)' : '') => $est['profit'], 'Other taxable income' => $est['other_income'], 'Personal allowance' => $est['allowance'],
+                'Taxable income' => $est['taxable'], 'Income Tax' . ($est['region'] === 'scotland' ? ' (Scottish rates)' : '') => $est['income_tax'], 'Class 4 National Insurance' => $est['class4'],
+                'Voluntary Class 2' => $est['class2'], 'Total estimated tax' => $est['total']];
+            foreach ($rows as $label => $v) {
+                if ($v > 0 || in_array($label, ['Total estimated tax', 'Taxable income'], true)) {
+                    $h .= '<tr><td>' . e($label) . '</td><td class="r">' . $g((float) $v) . '</td></tr>';
                 }
             }
             $h .= '</table><h2>Month By Month</h2><table><tr><th>Month</th><th class="r">Income</th><th class="r">Costs</th><th class="r">Profit</th></tr>';

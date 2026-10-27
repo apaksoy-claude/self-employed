@@ -17,7 +17,7 @@ $pc = static fn(float $n): string => rtrim(rtrim(number_format($n, 2), '0'), '.'
     <select class="form-select form-select-sm w-auto" name="year" aria-label="Tax year" data-autosubmit>
         <?php foreach ($years as $y): ?><option value="<?= e($y) ?>"<?= $y === $year ? ' selected' : '' ?>>Tax year <?= e($y) ?></option><?php endforeach; ?>
     </select>
-    <span class="small text-muted ms-2">Mileage rates for <?= e($year) ?>: <?= e($pc($rates['high'])) ?>p for the first <?= e(number_format($rates['threshold'])) ?> business miles of cars and vans, <?= e($pc($rates['low'])) ?>p after, <?= e($pc($rates['moto'])) ?>p for motorcycles. <a href="<?= e(admin_url('settings/money')) ?>">Change the rates</a></span>
+    <span class="small text-muted ms-2">Mileage rates for <?= e($year) ?>: <?= e($pc($rates['high'])) ?>p for the first <?= e(number_format($rates['threshold'])) ?> business miles of cars and vans, <?= e($pc($rates['low'])) ?>p after, <?= e($pc($rates['moto'])) ?>p for motorcycles. <a href="<?= e(admin_url('money/tax-rules?year=' . $year)) ?>">Change the rates</a></span>
 </form>
 <?php if (!$rows): ?>
     <div class="ap-section"><div class="ap-section-body"><?= Ui::emptyState('No vehicles yet.', 'Add each car or van you use for work, then log your miles. Money will compare the mileage rate with your actual costs.', admin_url('money/vehicles/new'), 'New Vehicle', 'fa-car-side') ?></div></div>

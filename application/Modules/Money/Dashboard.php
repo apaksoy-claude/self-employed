@@ -25,13 +25,13 @@ final class Dashboard
         $card = function (string $y) use ($data, $relief, $today): array {
             [$from, $to] = Money::taxYearRange($y);
             $t = Insights::totals($data, $from, $to);
-            $tax = Tax::estimate($t['profit'], $relief ? $t['pension'] * 1.25 : 0.0);
+            $tax = Tax::forYear($y, $t);
             $card = $t + ['year' => $y, 'from' => $from, 'to' => $to, 'tax' => $tax, 'projected' => null];
             if ($y === Money::taxYear($today) && $today >= $from) {
                 $days = (int) (new DateTimeImmutable($from))->diff(new DateTimeImmutable($today))->format('%a') + 1;
                 if ($days >= 45) {
                     $pp = round($t['profit'] / $days * 365, 2);
-                    $card['projected'] = ['profit' => $pp, 'tax' => Tax::estimate($pp, $relief ? $t['pension'] / $days * 365 * 1.25 : 0.0)];
+                    $card['projected'] = ['profit' => $pp, 'tax' => Tax::estimate($pp, $relief ? $t['pension'] / $days * 365 * 1.25 : 0.0, Tax::rates($y), Tax::options($y))];
                 }
             }
             return $card;

@@ -394,3 +394,34 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .ap-admin .rp-toggle .form-check-input:focus { box-shadow: none; }
 .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"], .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"]:hover:not(:disabled), .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"]:focus-visible { background-color: #dc2626 !important; border: 0; }
 .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"]:checked, .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"]:checked:hover:not(:disabled), .ap-admin .rp-toggle .form-switch .form-check-input[type="checkbox"]:checked:focus-visible { background-color: #16a34a !important; border: 0; }
+
+/* Settings > Tax Rules and the Tax Estimate extras */
+.tr-page .mn-sidenav em.mn-chip { font-size: .64rem; padding: .12rem .5rem; }
+.tr-page .mn-sidenav em.mn-chip-good { background: #d9f4e8; color: #076c49; }
+.tr-page .mn-sidenav em.mn-chip-warn { background: #fdecc8; color: #8a5800; }
+.tr-page .mn-sidenav em.mn-chip-info { background: #dfe8ff; color: #1f46b8; }
+.tr-addyear { margin-top: 8px; padding-top: 8px; border-top: 1px solid #e3e6ee; }
+.tr-main { display: grid; gap: 16px; min-width: 0; }
+.tr-form { display: grid; gap: 16px; }
+.tr-card header h2 i { color: var(--ap-accent); margin-right: .45rem; }
+.tr-card .row { margin-top: .4rem; }
+.tr-status { display: flex; gap: .85rem; align-items: flex-start; padding: .95rem 1.15rem; border-radius: 14px; background: #e8f7f0; color: #0b5d40; border: 1px solid #bfe9d6; }
+.tr-status.is-carried { background: #fff6e2; color: #7a4d00; border-color: #f6dfa8; }
+.tr-status.is-saved { background: #eaf1ff; color: #1d3f8f; border-color: #c9d9ff; }
+.tr-status > i { font-size: 1.15rem; margin-top: .15rem; }
+.tr-status > div:first-of-type { flex: 1 1 auto; }
+.tr-status p { margin: .15rem 0 0; font-size: .87rem; }
+.tr-status-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+.tx-mine .row { margin-top: .3rem; }
+.tx-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.tx-timeline li { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem .9rem; border-radius: 12px; background: #F5F6FA; }
+.tx-timeline li strong { white-space: nowrap; }
+.tx-timeline li small { display: block; color: var(--mn-sub, #6b7280); }
+.tx-compare { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+.tx-compare > div { padding: .85rem 1rem; border-radius: 12px; background: #F5F6FA; border: 2px solid transparent; }
+.tx-compare > div.is-used { border-color: var(--ap-accent); background: color-mix(in srgb, var(--ap-accent) 7%, #fff); }
+.tx-compare span { display: block; font-size: .78rem; color: var(--mn-sub, #6b7280); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.tx-compare strong { font-size: 1.2rem; }
+.tx-region { display: inline-block; margin-left: .5rem; font-size: .7rem; font-weight: 700; padding: .15rem .55rem; border-radius: 999px; background: #dfe8ff; color: #1f46b8; vertical-align: middle; }
+[data-bs-theme="dark"] .tx-timeline li, [data-bs-theme="dark"] .tx-compare > div { background: var(--ap-card); }
+@media (max-width: 575.98px) { .tx-compare { grid-template-columns: 1fr; } }

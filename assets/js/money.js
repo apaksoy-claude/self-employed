@@ -539,3 +539,63 @@ document.addEventListener('click', function (ev) {
 
 // A switch that saves as soon as it is flipped.
 document.addEventListener('change', function (e) { var t = e.target; if (t.matches && t.matches('input[data-submit-on-change]') && t.form) { t.form.submit(); } });
+
+/* Forms marked data-bg-save are saved in the background: no reload, a message when done, and the boxes with a problem marked. */
+(function () {
+  'use strict';
+  function clear(form) {
+    form.querySelectorAll('[data-bg-err]').forEach(function (n) { n.remove(); });
+    form.querySelectorAll('.is-invalid').forEach(function (n) { n.classList.remove('is-invalid'); });
+  }
+  function mark(form, errors) {
+    var first = null;
+    Object.keys(errors || {}).forEach(function (name) {
+      var msg = [].concat(errors[name])[0];
+      var field = form.querySelector('[name="' + name + '"]') || form.querySelector('[data-name="' + name + '"]');
+      if (!field) { return; }
+      if (field.matches('input,select,textarea')) { field.classList.add('is-invalid'); }
+      var note = document.createElement('div');
+      note.className = 'invalid-feedback d-block';
+      note.setAttribute('data-bg-err', '');
+      note.textContent = msg;
+      var wrap = field.closest('.ap-field') || field.parentNode;
+      wrap.appendChild(note);
+      first = first || field;
+    });
+    if (first) { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (first.focus) { first.focus({ preventScroll: true }); } }
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('form[data-bg-save]') || !window.fetch) { return; }
+    var btn = e.submitter;
+    if (btn && btn.hasAttribute('formaction')) { return; }
+    e.preventDefault();
+    var go = form.querySelector('[data-bg-go]');
+    var label = go ? go.querySelector('span') : null;
+    var before = label ? label.textContent : '';
+    if (go) { go.disabled = true; }
+    if (label) { label.textContent = 'Saving…'; }
+    clear(form);
+    fetch(form.getAttribute('action'), { method: 'POST', body: new FormData(form), credentials: 'same-origin', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok) {
+          if (window.apToast) { window.apToast('success', j.message || 'Saved.'); }
+          form.dispatchEvent(new CustomEvent('bg-saved', { detail: j, bubbles: true }));
+          var swap = form.getAttribute('data-bg-swap');
+          var target = swap ? form.closest(swap) : null;
+          if (target && j.html) {
+            var holder = document.createElement('div');
+            holder.innerHTML = j.html;
+            var fresh = holder.firstElementChild;
+            if (fresh) { target.replaceWith(fresh); }
+          }
+          return;
+        }
+        mark(form, (j && j.errors) || {});
+        if (window.apToast) { window.apToast('warning', (j && j.message) || 'Please check the form.'); }
+      })
+      .catch(function () { if (window.apToast) { window.apToast('danger', 'Could not save. Check your connection and try again.'); } })
+      .then(function () { if (go) { go.disabled = false; } if (label) { label.textContent = before; } });
+  });
+})();

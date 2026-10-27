@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.39.0 - Tax rules for each tax year
+Update package: install from System > Updates, then press "Finish update" (adds one small table; any rates you changed before are kept for this tax year).
+- New page: Settings > Tax Rules. Each tax year has its own rates: Income Tax for England, Wales and Northern Ireland, Scottish bands, Class 4 and Class 2 National Insurance, the trading allowance, payments on account, the Making Tax Digital limit, mileage rates and the working-from-home flat rate. 2024-25, 2025-26 and 2026-27 are built in. The years are a list on the left; lists such as the Scottish bands are rows you can add, remove and drag. Save works in the background. Add The Next Year copies the newest year to check, and Back To Built-In undoes your changes. A year with no rates of its own uses the year before and says so.
+- Settings > Money > Your Tax: where you pay Income Tax (England, Wales Or Northern Ireland, or Scotland), expenses or the £1,000 trading allowance (or whichever leaves the lower profit), and voluntary Class 2 when profits are below the small profits threshold.
+- Settings > Money > Working From Home: claim the business share of your bills, or HMRC's flat rate a month. With the flat rate, set the hours you work at home on the Tax Estimate page; bills filed to "Use of home" are then left out because the flat rate covers them.
+- Tax Estimate: Scottish rates, other income (wages or a pension) and the tax already taken off it, the trading allowance compared with your costs, When To Pay (the January balance with payments on account, and July), a note on Class 2 and your State Pension, and whether Making Tax Digital is likely to apply (from your income two years before). Your figures save in the background and the estimate updates without reloading.
+- The dashboard, reports, accountant pack and mileage all use the rates of the right tax year.
+- Tests: Money 57, core 65.
+
 ## 1.38.0 - A clean start for every business
 Update package: install from System > Updates. No database changes.
 - The import from another invoicing program is removed, with its page, menu entry and search words. Anything already imported stays.

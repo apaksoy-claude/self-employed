@@ -25,16 +25,11 @@ final class Mileage
         self::$cache = null;
     }
 
-    /** Pence per mile for a tax year label such as 2026-27. @return array{high:float,low:float,moto:float,threshold:int} */
+    /** Pence per mile for a tax year label such as 2026-27, from Settings > Tax Rules. @return array{high:float,low:float,moto:float,threshold:int} */
     public static function rates(string $year): array
     {
-        $old = (int) substr($year, 0, 4) < 2026;
-        return [
-            'high' => (float) setting($old ? 'money.mile_high_old' : 'money.mile_high', $old ? 45 : 55),
-            'low' => (float) setting('money.mile_low', 25),
-            'moto' => (float) setting('money.mile_moto', 24),
-            'threshold' => max(0, (int) setting('money.mile_threshold', 10000)),
-        ];
+        $r = TaxRules::forYear($year);
+        return ['high' => (float) $r['mile_high'], 'low' => (float) $r['mile_low'], 'moto' => (float) $r['mile_moto'], 'threshold' => max(0, (int) $r['mile_threshold'])];
     }
 
     /** Value in pounds of $miles, when $before miles of cars and vans were already driven this year. */

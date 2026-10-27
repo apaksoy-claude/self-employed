@@ -22,6 +22,7 @@ use AP\Modules\Money\Controllers\ReceiptController;
 use AP\Modules\Money\Controllers\ReportController;
 use AP\Modules\Money\Controllers\ScheduledReportController;
 use AP\Modules\Money\Controllers\TaxController;
+use AP\Modules\Money\Controllers\TaxRulesController;
 use AP\Modules\Money\Controllers\SetupController;
 use AP\Modules\Money\Controllers\TripController;
 use AP\Modules\Money\Controllers\VehicleController;
@@ -37,6 +38,12 @@ return static function (Router $r): void {
     $r->get('/pay/{token:[a-f0-9]{32}}/invoice', [PayController::class, 'document'], 'pay.document', ['throttle:60,60']);
     $r->post('/pay/{token:[a-f0-9]{32}}/start/{provider:[a-z]+}', [PayController::class, 'start'], 'pay.start', ['throttle:20,60']);
     $r->get('/pay/{token:[a-f0-9]{32}}/done/{provider:[a-z]+}', [PayController::class, 'done'], 'pay.done', ['throttle:30,60']);
+    $r->group(['prefix' => admin_path() . '/money/tax-rules', 'middleware' => ['auth', 'can:settings.edit'], 'as' => 'admin.money.taxrules.'], static function (Router $r): void {
+        $r->get('/', [TaxRulesController::class, 'index'], 'index');
+        $r->post('/save', [TaxRulesController::class, 'save'], 'save');
+        $r->post('/copy', [TaxRulesController::class, 'copy'], 'copy');
+        $r->post('/restore', [TaxRulesController::class, 'restore'], 'restore');
+    });
     $r->group(['prefix' => admin_path() . '/appearance', 'middleware' => ['auth', 'can:settings.edit'], 'as' => 'admin.appearance.'], static function (Router $r): void {
         $r->get('/buttons', [ButtonController::class, 'index'], 'buttons');
         $r->post('/buttons', [ButtonController::class, 'save'], 'buttons.save');
@@ -114,6 +121,7 @@ return static function (Router $r): void {
 
 
 
+            $r->post('/tax/figures', [TaxController::class, 'savePersonal'], 'tax.figures');
             $r->get('/setup', [SetupController::class, 'index'], 'setup');
             $r->post('/setup/apply', [SetupController::class, 'apply'], 'setup.apply');
             $r->post('/setup/dismiss', [SetupController::class, 'dismiss'], 'setup.dismiss');

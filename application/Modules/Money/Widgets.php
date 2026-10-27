@@ -282,7 +282,7 @@ final class Widgets
                 return (float) $d['invoices']['due'];
             }
             $f = self::figures($d['ins'], $from, $to, $stream, $cat);
-            return $measure === 'tax' ? (float) Tax::estimate($f['profit'], 0.0)['total'] : $f[$measure];
+            return $measure === 'tax' ? (float) Tax::estimate($f['profit'], 0.0, Tax::rates(Money::taxYear($to)), ['region' => Tax::options(Money::taxYear($to))['region']])['total'] : $f[$measure];
         };
         $now = $value($p['from'], $p['to']);
         $class = $measure === 'costs' || $measure === 'tax' ? 'mn-neg' : ($measure === 'owed' ? 'mn-warn' : ($now < 0 ? 'mn-neg' : 'mn-pos'));

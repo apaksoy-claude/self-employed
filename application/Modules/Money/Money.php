@@ -216,12 +216,17 @@ final class Money
         $rows = $db->table('money_expenses')->whereNull('deleted_at')->where('expense_date', '>=', $from)->where('expense_date', '<=', $to)
             ->select('category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id')->get();
         $byMileage = Mileage::mileageVehicleIds();
+        $flatHome = HomeUse::flat();
         foreach ($rows as $r) {
             $nExp++;
             $mine = round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
             $cat = $catById[(int) $r['category_id']] ?? null;
             if ($byMileage && in_array((int) $r['vehicle_id'], $byMileage, true) && empty($cat['with_mileage'])) {
                 $notCosts['mileage_covered'] = round(($notCosts['mileage_covered'] ?? 0) + $mine, 2);
+                continue;
+            }
+            if ($flatHome && $cat !== null && (string) $cat['hmrc_box'] === 'home_use') {
+                $notCosts['home_covered'] = round(($notCosts['home_covered'] ?? 0) + $mine, 2);
                 continue;
             }
             if ($cat === null) {
@@ -247,6 +252,12 @@ final class Money
             $costs += $mileage;
             $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $mileage;
         }
+        $home = HomeUse::claimBetween($from, $to);
+        if ($home > 0) {
+            $boxes['home_use'] = round(($boxes['home_use'] ?? 0) + $home, 2);
+            $costs += $home;
+            $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $home;
+        }
         foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount')->get() as $r) {
             $sid = (int) $r['stream_id'];
             $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + (float) $r['amount'];
@@ -259,7 +270,7 @@ final class Money
         usort($streams, static fn($a, $b) => $b['income'] <=> $a['income']);
         arsort($boxes);
         [$owed, $owedCount] = self::owed();
-        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
+        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'home_flat' => $home, 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
             'not_costs' => $notCosts, 'unfiled' => round($unfiled, 2), 'streams' => $streams, 'owed' => $owed, 'owed_count' => $owedCount,
             'counts' => ['income' => $inc->count(), 'expenses' => $nExp]];
     }

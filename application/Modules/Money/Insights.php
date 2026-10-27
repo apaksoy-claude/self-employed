@@ -22,6 +22,7 @@ final class Insights
         }
         $exp = [];
         $byMileage = Mileage::mileageVehicleIds();
+        $flat = HomeUse::flat();
         foreach ($db->table('money_expenses')->whereNull('deleted_at')->select('expense_date', 'category_id', 'stream_id', 'amount', 'business_percent', 'vehicle_id')->get() as $r) {
             $cat = $cats[(int) $r['category_id']] ?? ['other', true, false];
             $mine = round((float) $r['amount'] * (float) $r['business_percent'] / 100, 2);
@@ -29,10 +30,17 @@ final class Insights
                 $exp[] = [(string) $r['expense_date'], $mine, false, 'mileage_covered', (int) $r['category_id'], (int) $r['stream_id']];
                 continue;
             }
+            if ($flat && $cat[0] === 'home_use') {
+                $exp[] = [(string) $r['expense_date'], $mine, false, 'home_covered', (int) $r['category_id'], (int) $r['stream_id']];
+                continue;
+            }
             $exp[] = [(string) $r['expense_date'], $mine, $cat[1], $cat[0], (int) $r['category_id'], (int) $r['stream_id']];
         }
         foreach (Mileage::claims() as $c) {
             $exp[] = [$c['date'], $c['amount'], true, 'car_van_travel', 0, 0];
+        }
+        foreach (HomeUse::claims() as $c) {
+            $exp[] = [$c['date'], $c['amount'], true, 'home_use', 0, 0];
         }
         return ['inc' => $inc, 'exp' => $exp];
     }
