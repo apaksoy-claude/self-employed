@@ -9,7 +9,7 @@ use AP\Modules\Money\Import\Mailbox;
 use AP\Modules\Money\Import\MimeMessage;
 
 /**
- * Reads receipt emails from Gmail (with an app password), adds each one as an expense, keeps a copy of the email as a receipt,
+ * Reads receipt emails from any mailbox that offers IMAP, such as Gmail, Yahoo, iCloud or your own domain (with a password or app password), adds each one as an expense, keeps a copy of the email as a receipt,
  * and moves the email to the bin. Only emails that match a rule you chose are touched; a mail that cannot be read is left alone.
  */
 final class Gmail
@@ -258,10 +258,31 @@ final class Gmail
             return (self::$connect)();
         }
         if (!self::configured()) {
-            return 'Add your Gmail address and app password in Settings > Email Import first.';
+            return 'Add your email address and its password or app password in Settings > Email Import first.';
         }
-        return ImapMailbox::open((string) setting('money.gmail_host', 'imap.gmail.com'), 993, trim((string) setting('money.gmail_user', '')), (string) setting('money.gmail_pass', ''),
-            (string) setting('money.gmail_folder', 'INBOX'), (string) setting('money.gmail_bin', '[Gmail]/Bin'));
+        $c = self::connection();
+        return ImapMailbox::open($c['host'], $c['port'], $c['user'], (string) setting('money.gmail_pass', ''), $c['folder'], $c['bin'], $c['security']);
+    }
+
+    /** Mail providers whose servers are filled in by a button on Settings > Email Import. @var array<string,array{host:string,port:int,security:string,bin:string}> */
+    public const PROVIDERS = [
+        'Gmail' => ['host' => 'imap.gmail.com', 'port' => 993, 'security' => 'ssl', 'bin' => '[Gmail]/Bin'],
+        'Yahoo' => ['host' => 'imap.mail.yahoo.com', 'port' => 993, 'security' => 'ssl', 'bin' => 'Trash'],
+        'iCloud' => ['host' => 'imap.mail.me.com', 'port' => 993, 'security' => 'ssl', 'bin' => 'Deleted Messages'],
+        'AOL' => ['host' => 'imap.aol.com', 'port' => 993, 'security' => 'ssl', 'bin' => 'Trash'],
+        'Zoho' => ['host' => 'imap.zoho.com', 'port' => 993, 'security' => 'ssl', 'bin' => 'Trash'],
+        'Fastmail' => ['host' => 'imap.fastmail.com', 'port' => 993, 'security' => 'ssl', 'bin' => 'Trash'],
+        'IONOS' => ['host' => 'imap.ionos.co.uk', 'port' => 993, 'security' => 'ssl', 'bin' => 'Trash'],
+    ];
+
+    /** The mail server, port, security, sign-in name and folders from the settings. @return array{host:string,port:int,security:string,user:string,folder:string,bin:string} */
+    public static function connection(): array
+    {
+        $host = trim((string) setting('money.gmail_host', 'imap.gmail.com')) ?: 'imap.gmail.com';
+        $security = (string) setting('money.gmail_security', 'ssl') === 'starttls' ? 'starttls' : 'ssl';
+        $port = (int) setting('money.gmail_port', 993);
+        return ['host' => $host, 'port' => $port > 0 && $port < 65536 ? $port : ($security === 'starttls' ? 143 : 993), 'security' => $security, 'user' => trim((string) setting('money.gmail_user', '')),
+            'folder' => trim((string) setting('money.gmail_folder', 'INBOX')) ?: 'INBOX', 'bin' => trim((string) setting('money.gmail_bin', '[Gmail]/Bin')) ?: 'Trash'];
     }
 
     /** Check the connection only. */
@@ -296,7 +317,7 @@ final class Gmail
         $box = self::connect();
         if (is_string($box)) {
             $res['message'] = $box;
-            Money::tell('money_mail', 'danger', 'Could not reach Gmail', $box, admin_url('money/email-import'), 'mail-conn-' . substr($box, 0, 40));
+            Money::tell('money_mail', 'danger', 'Could not reach the mailbox', $box, admin_url('money/email-import'), 'mail-conn-' . substr($box, 0, 40));
             return $res;
         }
         $db = Money::db();
@@ -423,7 +444,7 @@ final class Gmail
                 }
             }
         } catch (\Throwable $e) {
-            \AP\Core\Logger::warning('Gmail import stopped: ' . $e->getMessage());
+            \AP\Core\Logger::warning('Email import stopped: ' . $e->getMessage());
             $res['errors'][] = 'The check stopped early: ' . $e->getMessage();
             Money::tell('money_mail', 'danger', 'Email import stopped', mb_substr($e->getMessage(), 0, 200), admin_url('money/email-import'), 'mail-stop-' . substr($e->getMessage(), 0, 40));
         }

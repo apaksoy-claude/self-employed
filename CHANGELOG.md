@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.45.0 - Email import from any provider
+Update package: install from System > Updates. No database changes.
+- Email Import now works with any mailbox that offers IMAP, not just Gmail. Settings > Email Import has buttons that fill in the server, port, security and bin folder for Gmail, Yahoo, iCloud, AOL, Zoho, Fastmail and IONOS, or type in any other server.
+- Both kinds of secure connection: SSL/TLS (usually port 993) and STARTTLS (usually port 143).
+- The tips say where each provider makes an app password. Outlook, Hotmail and Microsoft 365 no longer let other apps sign in with a password, so the tips explain forwarding receipts to another mailbox instead.
+- If the bin folder you name is not found, the folder the server marks as its bin is used.
+- Clearer messages when the server cannot be reached or refuses the sign-in.
+- All wording now speaks of your mailbox rather than Gmail.
+- Tests: Money 65, core 65.
+
 ## 1.44.0 - Bank statement import
 Update package: install from System > Updates, then press "Finish update" (adds tables for bank layouts and imports).
 - New page: Money > Bank Import. Load a statement downloaded from online banking: a CSV from any bank, or an OFX or QFX file. Say which account it is for, so the same account is always matched.

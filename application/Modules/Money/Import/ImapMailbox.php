@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace AP\Modules\Money\Import;
 
-/** A small IMAP client over TLS, enough to read and bin mail in Gmail with an app password. */
+/** A small IMAP client over TLS (straight away on port 993, or STARTTLS on 143), enough to read and bin mail with a password or app password. */
 final class ImapMailbox implements Mailbox
 {
     /** @var resource */
@@ -16,11 +16,20 @@ final class ImapMailbox implements Mailbox
     }
 
     /** @return self|string a connected mailbox, or the reason it failed */
-    public static function open(string $host, int $port, string $user, string $pass, string $folder, string $bin): self|string
+    public static function open(string $host, int $port, string $user, string $pass, string $folder, string $bin, string $security = 'ssl'): self|string
     {
-        $fp = @stream_socket_client('ssl://' . $host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true]]));
+        $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $host]]);
+        $starttls = $security === 'starttls';
+        $errstr = '';
+        try {
+            $fp = @stream_socket_client(($starttls ? 'tcp://' : 'ssl://') . $host . ':' . $port, $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
+        } catch (\Throwable $e) {
+            // Some error handlers turn the warning into an exception, even with @.
+            $fp = false;
+            $errstr = preg_match('/\(([^()]*)\)\s*$/', $e->getMessage(), $m) ? $m[1] : $e->getMessage();
+        }
         if (!$fp) {
-            return 'Could not reach ' . $host . ' (' . $errstr . ').';
+            return 'Could not reach ' . $host . ' on port ' . $port . ' (' . $errstr . '). Check the server name and port in Settings > Email Import.';
         }
         stream_set_timeout($fp, 30);
         $m = new self($fp);
@@ -28,9 +37,15 @@ final class ImapMailbox implements Mailbox
         if (!str_starts_with((string) fgets($fp, 2048), '* OK')) {
             return 'The mail server did not say hello.';
         }
+        if ($starttls) {
+            [$ok] = $m->cmd('STARTTLS');
+            if (!$ok || !@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+                return 'The mail server would not start a secure connection. Try SSL/TLS on port 993.';
+            }
+        }
         [$ok, $why] = $m->cmd('LOGIN ' . self::q($user) . ' ' . self::q($pass));
         if (!$ok) {
-            return 'Gmail refused the sign-in. Use an app password (Google Account > Security > App passwords) and check that IMAP is switched on in Gmail settings.';
+            return 'The mail server refused the sign-in. Most providers need an app password rather than your normal password, and some need IMAP switched on first. See the tips on Settings > Email Import.';
         }
         [$ok] = $m->cmd('SELECT ' . self::q($folder));
         return $ok ? $m : 'The folder "' . $folder . '" was not found.';
@@ -94,7 +109,7 @@ final class ImapMailbox implements Mailbox
         return $ok ? $this->literal($d) : '';
     }
 
-    /** The folder Gmail calls the bin in this account: the one you named, else whichever folder is marked as the bin (Trash). */
+    /** The bin folder: the one you named, else whichever folder the server marks as the bin (Trash), as Gmail, iCloud and others do. */
     private function binFolders(): array
     {
         $out = [$this->bin];

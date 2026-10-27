@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace AP\Modules\Money\Import;
 
-/** What the Gmail import needs from a mailbox. The real one talks IMAP; tests use a small fake. */
+/** What the email import needs from a mailbox. The real one talks IMAP; tests use a small fake. */
 interface Mailbox
 {
     /** @return list<int> ids of mails from the last N days, newest last */

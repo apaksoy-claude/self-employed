@@ -3057,6 +3057,39 @@ final class MoneyTests
         return '';
     }
 
+    public function test_email_import_connects_to_any_imap_provider(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $c = Gmail::connection();
+            $this->assert($c['host'] === 'imap.gmail.com' && $c['port'] === 993 && $c['security'] === 'ssl' && $c['bin'] === '[Gmail]/Bin' && $c['folder'] === 'INBOX', 'Gmail to start with: ' . json_encode($c));
+            foreach (Gmail::PROVIDERS['iCloud'] as $k => $v) {
+                $s->set('money.gmail_' . $k, $v);
+            }
+            $s->set('money.gmail_user', 'kim');
+            $c = Gmail::connection();
+            $this->assert($c['host'] === 'imap.mail.me.com' && $c['bin'] === 'Deleted Messages' && $c['user'] === 'kim', 'iCloud filled in');
+            $s->set('money.gmail_security', 'starttls');
+            $s->set('money.gmail_port', 0);
+            $s->set('money.gmail_host', 'mail.example.co.uk');
+            $c = Gmail::connection();
+            $this->assert($c['security'] === 'starttls' && $c['port'] === 143 && $c['host'] === 'mail.example.co.uk', 'any other server with STARTTLS');
+            $fail = \AP\Modules\Money\Import\ImapMailbox::open('127.0.0.1', 1, 'kim', 'x', 'INBOX', 'Trash');
+            $this->assert(is_string($fail) && str_contains($fail, 'Could not reach 127.0.0.1 on port 1'), 'a server that cannot be reached is explained: ' . (is_string($fail) ? $fail : 'connected'));
+            $page = (new \AP\Modules\Settings\Controllers\SettingsController())->group(new Request('GET', '/admin/settings/money_gmail', [], [], [], ['HTTP_HOST' => 'localhost']), 'money_gmail')->body;
+            $this->assert(str_contains($page, 'Fill in for') && str_contains($page, '>iCloud<') && str_contains($page, '>IONOS<') && str_contains($page, 'Mail Server (IMAP)'), 'the settings page offers the providers');
+            $tips = implode(' ', (array) ((require __DIR__ . '/../module.php')['setting_groups']['money_gmail']['tips'] ?? []));
+            $this->assert(str_contains($tips, 'Outlook, Hotmail and Microsoft 365') && str_contains($tips, 'App-Specific Passwords'), 'the tips explain app passwords and Outlook');
+            $s->set('money.gmail_user', '');
+            $imp = (new \AP\Modules\Money\Controllers\GmailController())->index(new Request('GET', '/admin/money/email-import', [], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(str_contains($imp, 'No mailbox is connected yet.'), 'the import page speaks of any mailbox');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/email-import'] ?? ''), 'yahoo'), 'the search finds it by provider');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';

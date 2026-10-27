@@ -9,7 +9,7 @@ $this->extend('admin::layout');
 <div class="mn-page">
     <div class="mn-head"><div><p>Emails that fit one of your rules become expenses by themselves, with the right category and details. The email or its PDF is saved on the expense.</p></div></div>
     <?php if (!$configured): ?>
-        <section class="mn-card"><div class="ap-section-body"><?= Ui::emptyState('Gmail is not connected yet.', 'Add your Gmail address and an app password, then switch the import on.', admin_url('settings/money_gmail'), 'Open Email Import Settings', 'fa-envelope') ?></div></section>
+        <section class="mn-card"><div class="ap-section-body"><?= Ui::emptyState('No mailbox is connected yet.', 'Choose your email provider in the settings (Gmail, Yahoo, iCloud, your own domain or any IMAP mailbox), add your email address and an app password, then switch the import on.', admin_url('settings/money_gmail'), 'Open Email Import Settings', 'fa-envelope') ?></div></section>
     <?php else: ?>
         <section class="mn-card">
             <header><div><h2>Check Now</h2><p>Looks at emails from the last <?= (int) $days ?> days. <?= $on ? 'It also runs by itself on the schedule.' : 'Automatic checking is switched off in Settings.' ?> <?= $del ? 'Matching emails are moved to the bin.' : 'Matching emails stay in your inbox.' ?></p></div></header>
