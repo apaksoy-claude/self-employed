@@ -265,6 +265,17 @@ final class Money
             $costs += $home;
             $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $home;
         }
+        $stock = 0.0;
+        foreach (Stock::claims() as $c) {
+            if ($c['date'] >= $from && $c['date'] <= $to) {
+                $stock += $c['amount'];
+            }
+        }
+        if (abs($stock) > 0.004) {
+            $boxes['goods'] = round(($boxes['goods'] ?? 0) + $stock, 2);
+            $costs += $stock;
+            $perStream[0]['costs'] = ($perStream[0]['costs'] ?? 0) + $stock;
+        }
         foreach ($db->table('money_income')->whereNull('deleted_at')->where('income_date', '>=', $from)->where('income_date', '<=', $to)->select('stream_id', 'amount', 'income_date', 'invoice_id', 'vat_amount', 'cis_deducted')->get() as $r) {
             $sid = (int) $r['stream_id'];
             $perStream[$sid]['income'] = ($perStream[$sid]['income'] ?? 0) + Vat::incomeNet($r);
@@ -277,7 +288,7 @@ final class Money
         usort($streams, static fn($a, $b) => $b['income'] <=> $a['income']);
         arsort($boxes);
         [$owed, $owedCount] = self::owed();
-        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'home_flat' => $home, 'equipment' => $equip, 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
+        return ['from' => $from, 'to' => $to, 'income' => $income, 'mileage' => $mileage, 'home_flat' => $home, 'equipment' => $equip, 'stock' => round($stock, 2), 'costs' => round($costs, 2), 'profit' => round($income - $costs, 2), 'boxes' => $boxes,
             'not_costs' => $notCosts, 'unfiled' => round($unfiled, 2), 'streams' => $streams, 'owed' => $owed, 'owed_count' => $owedCount,
             'counts' => ['income' => $inc->count(), 'expenses' => $nExp]];
     }
@@ -562,5 +573,6 @@ final class Money
             'cis' => $cis['cis'], 'cis_labour' => $cis['labour'], 'cis_materials' => $cis['materials'], 'updated_at' => gmdate('Y-m-d H:i:s')]);
         Vat::reset();
         Cis::reset();
+        Stock::syncInvoice($id);
     }
 }

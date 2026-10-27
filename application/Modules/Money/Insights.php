@@ -46,6 +46,10 @@ final class Insights
         foreach (Assets::schedule()['claims'] as $c) {
             $exp[] = [$c['date'], $c['amount'], true, 'capital_claims', 0, 0];
         }
+        // Traditional accounting: the change in stock over each tax year changes the cost of goods, on the year's last day.
+        foreach (Stock::claims() as $c) {
+            $exp[] = [$c['date'], $c['amount'], true, 'goods', 0, 0];
+        }
         return ['inc' => $inc, 'exp' => $exp];
     }
 

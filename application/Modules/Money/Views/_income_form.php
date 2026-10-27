@@ -28,6 +28,16 @@ $i ??= null;
             <?= Fields::text('vat_amount', 'VAT Amount (£)', \AP\Modules\Money\Vat::formValue($i, 'income_date'), ['col' => 'is-half', 'inputmode' => 'decimal', 'placeholder' => 'Worked out for you']) ?>
         </div>
         <?php endif; ?>
+        <?php $soldLines = \AP\Modules\Money\Stock::ready() ? \AP\Modules\Money\Stock::linesOf('income_id', (int) ($i['id'] ?? 0)) : [];
+        if (\AP\Modules\Money\Stock::on() || $soldLines): ?>
+        <div class="mn-fields mn-stock-lines" data-no-invoice<?= (int) ($i['invoice_id'] ?? 0) > 0 ? ' hidden' : '' ?>>
+            <input type="hidden" name="stock_lines" value="1">
+            <?= \AP\Core\Form::field(['name' => 'stock', 'label' => 'Sold From Stock', 'type' => 'repeater', 'add_label' => 'Add An Item', 'max_rows' => 50, 'col' => 'w-100',
+                'value' => array_map(static fn($l) => ['item' => (string) $l['item'], 'qty' => \AP\Modules\Money\Stock::qty($l['qty'])], $soldLines),
+                'fields' => ['item' => ['label' => 'Item', 'type' => 'select', 'options' => ['' => 'Choose An Item…'] + \AP\Modules\Money\Stock::choices()], 'qty' => ['label' => 'How Many', 'width' => 'sm', 'placeholder' => '1']],
+                'help' => 'For a sale with no invoice. Invoice lines take stock out by themselves.']) ?>
+        </div>
+        <?php endif; ?>
         <?= Fields::select('stream_id', 'Stream', $streams, $i['stream_id'] ?? 0, ['none' => 'Not assigned', 'col' => 'is-half']) ?>
         <?= Fields::select('contact_id', 'Client', $contacts, $i['contact_id'] ?? 0, ['none' => 'Nobody in particular', 'col' => 'is-half']) ?>
         <?= Fields::select('payment_method', 'Paid By', Money::payOptions('money.paid_by', (string) ($i['payment_method'] ?? '')), $i['payment_method'] ?? '', ['none' => 'Not Said', 'none_value' => '', 'col' => 'is-half']) ?>

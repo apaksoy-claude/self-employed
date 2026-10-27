@@ -2894,6 +2894,88 @@ final class MoneyTests
         return '';
     }
 
+    public function test_stock_comes_in_on_expenses_goes_out_on_sales_and_counts_at_the_year_end(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            $s->set('money.feature_stock', true);
+            $json = ['HTTP_HOST' => 'localhost', 'HTTP_ACCEPT' => 'application/json'];
+            $post = static fn(array $d) => new Request('POST', '/x', [], $d + ['after' => 'list'], [], $json);
+            $get = static fn(string $path, array $q = []) => new Request('GET', $path, $q, [], [], ['HTTP_HOST' => 'localhost']);
+            $sc = new \AP\Modules\Money\Controllers\StockController();
+            $bad = $sc->save($post(['name' => '', 'price' => 'x', 'opening' => '5', 'opening_cost' => '', 'opening_date' => 'soon']));
+            $errs = json_decode($bad->body, true)['errors'] ?? [];
+            $this->assert($bad->status === 422 && isset($errs['name'], $errs['price'], $errs['opening_date']), 'the item form checks its boxes');
+            $sc->save($post(['name' => 'Blue Mug', 'sku' => 'MUG-B', 'price' => '12', 'low_at' => '2', 'opening' => '10', 'opening_cost' => '4', 'opening_date' => '01/04/2026']));
+            $mug = (int) $db->table('money_stock_items')->where('name', 'Blue Mug')->value('id');
+            $this->assert($mug > 0 && \AP\Modules\Money\Stock::levels()[$mug] == ['qty' => 10.0, 'avg' => 4.0], 'an item starts with what you have now');
+            // Bought on an expense: the amount is shared out by quantity, and the average cost follows.
+            $ec = new ExpenseController();
+            $this->assert(str_contains($ec->form($get('/x'))->body, 'Stock Bought'), 'the expense form has stock lines');
+            $ec->save($post(['title' => 'Mugs from the wholesaler', 'expense_date' => '15/04/2026', 'amount' => '60', 'category_id' => '7', 'stock_lines' => '1', 'stock' => [['item' => (string) $mug, 'qty' => '10', 'cost' => '']]]));
+            $eid = (int) $db->table('money_expenses')->where('title', 'Mugs from the wholesaler')->value('id');
+            $l = \AP\Modules\Money\Stock::levels()[$mug];
+            $this->assert($l['qty'] === 20.0 && abs($l['avg'] - 5.0) < 0.0001 && \AP\Modules\Money\Stock::linesOf('expense_id', $eid)[0]['cost'] === 6.0, 'ten more at 6.00 each: ' . json_encode($l));
+            // Sold on an invoice line (while it is sent) and on a payment with no invoice.
+            $ic = new InvoiceController();
+            $form = $ic->itemForm($get('/x'), '1')->body;
+            $this->assert(str_contains($form, 'name="stock_item_id"') && str_contains($form, 'data-stock-map') && str_contains($form, 'Blue Mug · MUG-B (20 in stock)'), 'invoice lines can come from stock');
+            $ic->itemSave($post(['title' => 'Blue Mug', 'quantity' => '3', 'rate' => '12', 'stock_item_id' => (string) $mug]), '1');
+            $ic->itemSave($post(['title' => 'Blue Mug', 'quantity' => '5', 'rate' => '12', 'stock_item_id' => (string) $mug]), '2');
+            $this->assert(\AP\Modules\Money\Stock::levels()[$mug]['qty'] === 17.0, 'the sent invoice takes 3 out; the draft one takes nothing');
+            $inc = new IncomeController();
+            $this->assert(str_contains($inc->form($get('/x'))->body, 'Sold From Stock'), 'the payment form has stock lines');
+            $inc->save($post(['title' => 'Market stall', 'income_date' => '16/05/2026', 'amount' => '24', 'stock_lines' => '1', 'stock' => [['item' => (string) $mug, 'qty' => '2']]]));
+            $iid = (int) $db->table('money_income')->where('title', 'Market stall')->value('id');
+            $this->assert(\AP\Modules\Money\Stock::levels()[$mug]['qty'] === 15.0, 'a sale with no invoice takes 2 out');
+            $inc->delete(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $iid);
+            \AP\Modules\Money\Stock::reset();
+            $this->assert(\AP\Modules\Money\Stock::levels()[$mug]['qty'] === 17.0, 'deleting the payment puts them back');
+            // Adjusted and counted.
+            $this->assert(str_contains($sc->adjustForm($get('/x'), (string) $mug)->body, 'Add Or Take Out'), 'the adjust form');
+            $sc->adjust($post(['qty' => '-1', 'move_date' => '20/05/2026', 'reason' => 'Damaged Or Lost']), (string) $mug);
+            $this->assert(\AP\Modules\Money\Stock::levels()[$mug]['qty'] === 16.0, 'one damaged');
+            $cnt = $sc->count($get('/admin/money/stock/count', ['date' => '01/06/2026']));
+            $this->assert($cnt->status === 200 && str_contains($cnt->body, 'You Counted') && str_contains($cnt->body, 'name="counted[' . $mug . ']"'), 'the stock count page');
+            $wrong = $sc->countSave($post(['date' => '01/06/2026', 'counted' => [$mug => 'lots']]));
+            $this->assert($wrong->status === 422, 'counts are checked');
+            $ok = json_decode($sc->countSave($post(['date' => '01/06/2026', 'counted' => [$mug => '14']]))->body, true);
+            $this->assert($ok['ok'] && str_contains($ok['message'], '1 item(s) changed') && \AP\Modules\Money\Stock::levels()[$mug]['qty'] === 14.0 && str_contains($ok['html'], 'data-stock-count'), 'the count puts the records right');
+            $this->assert(\AP\Modules\Money\Stock::valueAt() === 70.0 && \AP\Modules\Money\Stock::alerts() === ['low' => 0, 'out' => 0], 'fourteen left at 5.00 each');
+            // Traditional accounting: the rise in stock over the year comes off the cost of goods.
+            [$from, $to] = Money::taxYearRange('2026-27');
+            $cash = Insights::totals(Insights::load(), $from, $to)['costs'];
+            $this->assert(\AP\Modules\Money\Stock::claims() === [], 'nothing changes on the cash basis');
+            $s->set('money.basis', 'traditional');
+            \AP\Modules\Money\Stock::reset();
+            $this->assert(\AP\Modules\Money\Stock::yearChange('2026-27') === -30.0 && \AP\Modules\Money\Stock::yearChange('2025-26') === -40.0, 'opening 40, closing 70');
+            $trad = Insights::totals(Insights::load(), $from, $to)['costs'];
+            $o = Money::overview('2026-27');
+            $this->assert(abs($trad - ($cash - 30)) < 0.01 && $o['stock'] === -30.0 && abs($o['costs'] - $trad) < 0.01, 'costs fall by the rise in stock: ' . $cash . ' to ' . $trad);
+            $s->set('money.basis', 'cash');
+            // The list, its filters and ticked rows.
+            $page = $sc->index($get('/admin/money/stock'))->body;
+            $this->assert(str_contains($page, 'Blue Mug') && str_contains($page, '£70.00') && str_contains($page, 'In Stock') && str_contains($page, '58%'), 'the stock list shows value and margin');
+            $sc->bulk(new Request('POST', '/x', [], ['ids' => [(string) $mug], 'do' => 'low', 'value' => '20'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert(\AP\Modules\Money\Stock::alerts()['low'] === 1 && str_contains($sc->index($get('/admin/money/stock', ['state' => 'low']))->body, 'Blue Mug'), 'a warning level for ticked items');
+            $item = $sc->form($get('/x'), (string) $mug)->body;
+            $this->assert(str_contains($item, 'Opening Stock') && str_contains($item, 'Stock Count') && str_contains($item, 'Adjusted') && str_contains($item, 'Bought') && str_contains($item, 'Invoice INV-1') && str_contains($item, 'In Stock: 14'), 'the item shows its movements');
+            $sc->bulk(new Request('POST', '/x', [], ['ids' => [(string) $mug], 'do' => 'archive'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert((int) $db->table('money_stock_items')->where('id', $mug)->value('active') === 0 && \AP\Modules\Money\Stock::choices() === [], 'archived items are no longer offered');
+            $this->assert(str_contains($sc->index($get('/admin/money/stock', ['state' => 'archived']))->body, 'Blue Mug'), 'archived items are kept apart');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/stock'] ?? ''), 'inventory'), 'the search finds Stock');
+            $sc->delete(new Request('POST', '/x', [], [], [], ['HTTP_HOST' => 'localhost']), (string) $mug);
+            $this->assert(!$db->table('money_stock_moves')->where('item_id', $mug)->exists(), 'deleting an item removes its history');
+            $s->set('money.feature_stock', false);
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(!isset($items['money/stock']), 'Stock leaves the menu when switched off');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';
@@ -2939,6 +3021,7 @@ final class MoneyTests
             \AP\Modules\Money\Assets::reset();
             Vat::reset();
             \AP\Modules\Money\Cis::reset();
+            \AP\Modules\Money\Stock::reset();
             $modules->boot($app, false, true);
             $app->set('auth', new FakeAuth());
             View::addNamespace('app', AP_ROOT . '/Views');

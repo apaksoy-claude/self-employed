@@ -465,7 +465,10 @@
 
   /* ---- dynamic rows (repeater) ---- */
   var repSnapshots = [];
-  $$('[data-repeater]').forEach(function (rep) {
+  // Each repeater is set up once: on the page, and in content added later (such as a pop-up form) through window.apRepeaters(root).
+  function initRep(rep) {
+    if (rep.hasAttribute('data-rep-ready')) { return; }
+    rep.setAttribute('data-rep-ready', '');
     var rows = $('[data-rows]', rep);
     repSnapshots.push({ rows: rows, html: rows.innerHTML });
     var counter = 1000 + $$('[data-row]', rows).length;
@@ -496,7 +499,9 @@
     });
     apDrag({ root: rows, handle: '[data-rep-handle]', item: '[data-row]', done: function () { repSync(rep); } });
     repSync(rep, true);
-  });
+  }
+  $$('[data-repeater]').forEach(initRep);
+  window.apRepeaters = function (root) { $$('[data-repeater]', root || document).forEach(initRep); };
   function repSync(rep, quiet) {
     var rows = $$('[data-row]', rep);
     var max = parseInt(rep.getAttribute('data-max') || '100', 10);

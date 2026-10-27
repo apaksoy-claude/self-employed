@@ -10,6 +10,7 @@ use AP\Modules\Money\Controllers\CategoryController;
 use AP\Modules\Money\Controllers\CisController;
 use AP\Modules\Money\Controllers\ContactController;
 use AP\Modules\Money\Controllers\CustomFieldController;
+use AP\Modules\Money\Controllers\StockController;
 use AP\Modules\Money\Controllers\StreamController;
 use AP\Modules\Money\Controllers\DashboardController;
 use AP\Modules\Money\Controllers\ExpenseController;
@@ -66,6 +67,8 @@ return static function (Router $r): void {
         $r->get('/reports/export/{what:[a-z]+}', [ReportController::class, 'export'], 'reports.export');
         $r->get('/receipts', [ReceiptController::class, 'index'], 'receipts');
         $r->get('/equipment', [AssetController::class, 'index'], 'equipment');
+        $r->get('/stock', [StockController::class, 'index'], 'stock');
+        $r->get('/stock/count', [StockController::class, 'count'], 'stock.count');
         $r->get('/files/{id:\d+}', [FileController::class, 'show'], 'file');
 
         $r->get('/expenses', [ExpenseController::class, 'index'], 'expenses');
@@ -130,6 +133,14 @@ return static function (Router $r): void {
             $r->post('/vat/file', [VatController::class, 'file'], 'vat.file');
             $r->post('/vat/unfile', [VatController::class, 'unfile'], 'vat.unfile');
             $r->post('/cis/mark', [CisController::class, 'mark'], 'cis.mark');
+            $r->get('/stock/new', [StockController::class, 'form'], 'stock.new');
+            $r->get('/stock/{id:\d+}', [StockController::class, 'form'], 'stock.edit');
+            $r->post('/stock/save', [StockController::class, 'save'], 'stock.save');
+            $r->post('/stock/bulk', [StockController::class, 'bulk'], 'stock.bulk');
+            $r->post('/stock/count', [StockController::class, 'countSave'], 'stock.count.save');
+            $r->get('/stock/{id:\d+}/adjust', [StockController::class, 'adjustForm'], 'stock.adjust');
+            $r->post('/stock/{id:\d+}/adjust', [StockController::class, 'adjust'], 'stock.adjust.save');
+            $r->post('/stock/{id:\d+}/delete', [StockController::class, 'delete'], 'stock.delete');
             $r->get('/equipment/new', [AssetController::class, 'form'], 'equipment.new');
             $r->get('/equipment/{id:\d+}', [AssetController::class, 'form'], 'equipment.edit');
             $r->post('/equipment/save', [AssetController::class, 'save'], 'equipment.save');

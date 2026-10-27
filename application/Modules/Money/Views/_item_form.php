@@ -10,6 +10,11 @@ $q = $item ? rtrim(rtrim(number_format((float) $item['quantity'], 3, '.', ''), '
     <h2 class="mn-form-title"><?= $item ? 'Change Item' : 'Add Item' ?> <small><?= e((string) $inv['number']) ?></small></h2>
     <input type="hidden" name="item_id" value="<?= (int) ($item['id'] ?? 0) ?>">
     <div class="mn-fields">
+        <?php if (\AP\Modules\Money\Stock::on() || (int) ($item['stock_item_id'] ?? 0) > 0): ?>
+            <?= Fields::select('stock_item_id', 'From Stock', \AP\Modules\Money\Stock::choices((int) ($item['stock_item_id'] ?? 0)), $item['stock_item_id'] ?? 0, ['none' => 'Not From Stock',
+                'help' => 'Picking an item fills in its name and price, and the quantity comes out of stock while the invoice is sent.']) ?>
+            <div hidden data-stock-map="<?= e((string) json_encode(\AP\Modules\Money\Stock::fillMap(), JSON_FORCE_OBJECT)) ?>"></div>
+        <?php endif; ?>
         <?= Fields::text('title', 'Title', $item['title'] ?? '', ['required' => true, 'maxlength' => 255, 'placeholder' => 'Design work']) ?>
         <?= Fields::area('description', 'Description', $item['description'] ?? '', ['rows' => 3]) ?>
         <?= Fields::text('quantity', 'Quantity', $q, ['col' => 'is-third', 'inputmode' => 'decimal']) ?>

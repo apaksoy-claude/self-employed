@@ -372,6 +372,10 @@ final class InvoiceController
         if ((string) ($inv['cis_rate'] ?? '') !== '') {
             $data['cis_kind'] = $request->string('cis_kind') === 'materials' ? 'materials' : 'labour';
         }
+        if ($request->has('stock_item_id')) {
+            $sid = $request->int('stock_item_id');
+            $data['stock_item_id'] = $sid > 0 && $db->table('money_stock_items')->where('id', $sid)->whereNull('deleted_at')->exists() ? $sid : 0;
+        }
         $itemId = $request->int('item_id');
         if ($itemId > 0) {
             $db->table('money_invoice_items')->where('id', $itemId)->where('invoice_id', (int) $id)->update($data);

@@ -238,6 +238,11 @@ final class ExpenseController
             $data['created_at'] = $data['updated_at'];
             $id = $db->table('money_expenses')->insertGetId($data);
         }
+        if ($request->has('stock_lines') && \AP\Modules\Money\Stock::ready()) {
+            $box = (string) ($db->table('money_categories')->where('id', (int) $data['category_id'])->value('hmrc_box') ?? '');
+            $net = round((float) $amount - \AP\Modules\Money\Vat::reclaim($data, $box), 2);
+            \AP\Modules\Money\Stock::saveBought((int) $id, (string) $date, $net, \AP\Modules\Money\Stock::linesFromRequest($request));
+        }
         $problems = $this->attachAll($request, 'expense', $id);
         \AP\Modules\Money\CustomFields::save('expense', (int) $id, $request);
         Activity::log('money.expense.save', 'Saved the expense "' . $title . '"', 'money_expense', $id);

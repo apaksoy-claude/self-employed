@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.43.0 - Stock for sellers
+Update package: install from System > Updates, then press "Finish update" (adds the stock tables).
+- Settings > Money > Features: Stock, with the starting warning level for new items. Business Setup and the installer ask about it too.
+- New page: Money > Stock. Your items with what is left, the cost each (the average of what you paid), the value, the sell price and the margin, marked In Stock, Low or Out Of Stock. Filters are remembered; ticked items can be archived, brought back, deleted or given a warning level. Each item shows every movement.
+- New items start with how many you have now and what each cost. Add Or Take Out handles damaged, used, returned or found stock, with a reason.
+- Expenses have Stock Bought lines (rows to add, remove and reorder): each item comes in at its cost each, or a share of the amount by quantity, without VAT you reclaim.
+- Invoice lines can come from stock: picking an item fills in its name, price and unit, and the quantity goes out while the invoice is sent (not as a draft or cancelled). Payments with no invoice have Sold From Stock lines. Deleting a payment or an expense puts its stock back.
+- Stock Count: type what is on the shelf for a day; differences are saved as a count, in the background.
+- With traditional accounting, the change in stock value over each tax year changes your cost of goods (a rise lowers costs), in every profit figure. On the cash basis nothing changes, as goods count when you pay for them.
+- The dashboard's Needs A Look card lists items that are low or out of stock.
+- Repeating rows in forms now also work inside pop-up forms.
+- Tests: Money 63, core 65.
+
 ## 1.42.0 - CIS for builders
 Update package: install from System > Updates, then press "Finish update" (adds CIS columns and a table for monthly notes).
 - New page: Settings > CIS. Say contractors pay you under the Construction Industry Scheme and at what rate (20%, 30% or gross payment status), and whether you pay subcontractors under CIS, with your employer's reference for their statements. Business Setup and the installer ask about CIS too.

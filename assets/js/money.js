@@ -174,6 +174,7 @@
         box.innerHTML = '<button type="button" class="mn-icon mn-modal-x" data-modal-close aria-label="Close"><i class="fa-solid fa-xmark"></i></button>' + html;
         if (box.querySelector('.mn-two')) { box.classList.add('is-wide'); }
         wireToggles(box); wireZones(box);
+        if (window.apRepeaters) { window.apRepeaters(box); }
         var first = box.querySelector('input[type=text]:not([data-date]), textarea, select');
         if (first) { first.focus(); }
       })
@@ -627,4 +628,17 @@ document.addEventListener('change', function (e) {
   if (!holder || !rate) { return; }
   var map = {}; try { map = JSON.parse(holder.getAttribute('data-cis-map') || '{}'); } catch (err) { map = {}; }
   rate.value = Object.prototype.hasOwnProperty.call(map, t.value) ? map[t.value] : '';
+});
+
+// Invoice lines: picking a stock item fills in its name, price and unit.
+document.addEventListener('change', function (e) {
+  var t = e.target;
+  if (!t.matches || !t.matches('select[name="stock_item_id"]')) { return; }
+  var form = t.form, holder = form ? form.querySelector('[data-stock-map]') : null;
+  if (!holder) { return; }
+  var map = {}; try { map = JSON.parse(holder.getAttribute('data-stock-map') || '{}'); } catch (err) { map = {}; }
+  var it = map[t.value]; if (!it) { return; }
+  [['title', it.title], ['rate', it.rate], ['unit', it.unit]].forEach(function (p) {
+    var f = form.querySelector('[name="' + p[0] + '"]'); if (f && p[1] !== '' && p[1] !== '0.00') { f.value = p[1]; f.dispatchEvent(new Event('input', { bubbles: true })); }
+  });
 });

@@ -41,6 +41,17 @@ $rep = old('recurring', $e['recurring'] ?? 0);
                 <?= Fields::select('payment_method', 'Paid With', Money::payOptions('money.paid_with', (string) ($e['payment_method'] ?? '')), $e['payment_method'] ?? '', ['none' => 'Not Said', 'none_value' => '', 'col' => 'is-third']) ?>
                 <?= Fields::area('description', 'Notes', $e['description'] ?? '') ?>
             </div>
+            <?php $stockLines = \AP\Modules\Money\Stock::ready() ? \AP\Modules\Money\Stock::linesOf('expense_id', (int) ($e['id'] ?? 0)) : [];
+            if (\AP\Modules\Money\Stock::on() || $stockLines): ?>
+            <div class="mn-stock-lines">
+                <input type="hidden" name="stock_lines" value="1">
+                <?= \AP\Core\Form::field(['name' => 'stock', 'label' => 'Stock Bought', 'type' => 'repeater', 'add_label' => 'Add An Item', 'max_rows' => 50,
+                    'value' => array_map(static fn($l) => ['item' => (string) $l['item'], 'qty' => \AP\Modules\Money\Stock::qty($l['qty']), 'cost' => $l['cost'] === null ? '' : number_format($l['cost'], 2, '.', '')], $stockLines),
+                    'fields' => ['item' => ['label' => 'Item', 'type' => 'select', 'options' => ['' => 'Choose An Item…'] + \AP\Modules\Money\Stock::choices()], 'qty' => ['label' => 'How Many', 'width' => 'sm', 'placeholder' => '1'],
+                        'cost' => ['label' => 'Cost Each (£)', 'width' => 'sm', 'placeholder' => 'Shared out']],
+                    'help' => 'Goods bought to sell. Leave Cost Each empty and the amount (without VAT you reclaim) is shared out by quantity.']) ?>
+            </div>
+            <?php endif; ?>
             <div class="mn-repeat">
                 <label class="form-check"><input type="hidden" name="recurring" value="0"><input class="form-check-input" type="checkbox" name="recurring" value="1" data-toggle-target="#repeat-box"<?= $rep ? ' checked' : '' ?>> <span class="form-check-label">This cost comes again and again (for example vehicle rent)</span></label>
                 <div id="repeat-box" class="mn-repeat-row">

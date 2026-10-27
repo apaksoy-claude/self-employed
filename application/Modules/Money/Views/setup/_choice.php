@@ -56,6 +56,10 @@ $layoutCustom ??= false;
                 <span><strong>I Use A Vehicle For Work</strong><small>Shows Vehicles and the Mileage Log, and adds running costs such as fuel, insurance and parking.</small></span>
             </label>
             <label class="su-switch">
+                <input type="hidden" name="stock" value="0"><input class="form-check-input" type="checkbox" role="switch" name="stock" value="1"<?= $flag('stock') ? ' checked' : '' ?>>
+                <span><strong>I Sell Goods I Keep In Stock</strong><small>Shows Money > Stock: what is left, what it cost, low stock and the stock count.</small></span>
+            </label>
+            <label class="su-switch">
                 <input type="hidden" name="cis" value="0"><input class="form-check-input" type="checkbox" role="switch" name="cis" value="1"<?= $flag('cis') ? ' checked' : '' ?>>
                 <span><strong>Contractors Pay Me Under CIS</strong><small>For building work under the Construction Industry Scheme: invoices take the deduction off labour, and it comes off your tax bill.</small></span>
             </label>

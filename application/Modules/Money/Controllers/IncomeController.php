@@ -167,6 +167,9 @@ final class IncomeController
             $data['created_at'] = $data['updated_at'];
             $id = $db->table('money_income')->insertGetId($data);
         }
+        if ($request->has('stock_lines') && \AP\Modules\Money\Stock::ready()) {
+            \AP\Modules\Money\Stock::saveSold((int) $id, (string) $date, $invoiceId > 0 ? [] : \AP\Modules\Money\Stock::linesFromRequest($request));
+        }
         \AP\Modules\Money\CustomFields::save('income', (int) $id, $request);
         Activity::log('money.income.save', 'Saved income "' . $title . '"', 'money_income', $id);
         return Forms::done($request, admin_url('money/income'), admin_url('money/income/' . $id), 'Payment saved.');

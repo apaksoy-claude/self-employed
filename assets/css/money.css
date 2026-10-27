@@ -490,3 +490,9 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .cs-page .mn-head .vt-actions { align-items: flex-end; }
 .cs-kpis:empty { display: none; }
 .mn-cis-box { padding: .8rem .9rem .2rem; border-radius: 12px; background: #F5F6FA; }
+
+/* Money > Stock and stock lines on forms */
+.mn-stock-lines { margin-top: 1rem; padding: .9rem 1rem .3rem; border-radius: 12px; background: #F5F6FA; }
+.mn-fields > .mn-stock-lines { flex: 0 0 100%; margin-top: 0; }
+.mn-stock-lines .ap-repeater { background: transparent; }
+[data-stock-count] .mn-card > header .ap-field { margin: 0; }
