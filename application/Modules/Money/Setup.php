@@ -48,7 +48,7 @@ final class Setup
         return [
             'mode' => $request->string('mode') === 'fresh' ? 'fresh' : 'ready',
             'trades' => Trades::clean((array) $request->input('trades', [])),
-            'vehicle' => $on('vehicle'), 'home' => $on('home'), 'dashboard' => $on('dashboard'), 'cis' => $on('cis'), 'stock' => $on('stock'), 'skip' => $skip,
+            'vehicle' => $on('vehicle'), 'home' => $on('home'), 'dashboard' => $on('dashboard'), 'cis' => $on('cis'), 'stock' => $on('stock'), 'demo' => $on('demo'), 'skip' => $skip,
             'business' => $withBusiness ? ['name' => mb_substr(trim($request->string('biz_name')), 0, 120), 'email' => mb_substr(mb_strtolower(trim($request->string('biz_email'))), 0, 190)] : null,
         ];
     }
@@ -206,7 +206,7 @@ final class Setup
     /** One sentence about what a choice adds, for the installer's last page. @param array<string,mixed> $choice */
     public static function describe(array $choice): string
     {
-        $veh = !empty($choice['vehicle']) ? 'Vehicles and mileage shown.' : 'Vehicles and mileage hidden.';
+        $veh = (!empty($choice['vehicle']) ? 'Vehicles and mileage shown.' : 'Vehicles and mileage hidden.') . (!empty($choice['demo']) ? ' Demo data added to try it out.' : '');
         if (($choice['mode'] ?? 'ready') === 'fresh') {
             return 'Fresh start: nothing added. ' . $veh;
         }

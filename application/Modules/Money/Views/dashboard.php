@@ -21,6 +21,16 @@ $layout = Widgets::layout();
     </div>
 
 
+    <?php if (!empty($demoBanner)): ?>
+    <div class="su-banner dm-banner">
+        <span class="su-banner-icon"><i class="fa-solid fa-flask" aria-hidden="true"></i></span>
+        <div class="su-banner-text"><strong>You Are Looking At Demo Data</strong><p>The clients, invoices, payments and expenses marked "(Demo)" are made up. Delete them all with one button before you start for real; your own records stay.</p></div>
+        <div class="su-banner-actions">
+            <form method="post" action="<?= e(admin_url('money/demo/clear')) ?>"><?= csrf_field() ?><input type="hidden" name="return" value="<?= e(admin_url()) ?>"><button class="btn btn-danger mn-btn" type="submit" data-confirm="Delete all demo data? Your own records stay as they are."><i class="fa-solid fa-trash me-1" aria-hidden="true"></i>Delete All Demo Data</button></form>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <?php if (!empty($setupBanner)): ?>
     <div class="su-banner" data-su-banner>
         <span class="su-banner-icon"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i></span>

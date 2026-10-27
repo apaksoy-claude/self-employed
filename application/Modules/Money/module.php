@@ -68,6 +68,8 @@ return [
         ['label' => 'Business Setup', 'icon' => 'fa-wand-magic-sparkles', 'url' => 'money/setup', 'group' => 'Money', 'order' => 5.8, 'permission' => 'money.edit',
             'info' => 'Add ready-made categories, income streams, ways of paying and dashboard cards for your kind of work. Only adds; nothing you have is changed.',
             'keywords' => 'business setup set up start starter install type of business trade kind of work ready made categories income streams driver courier taxi tradesperson builder plumber electrician freelancer creative designer seller retail online shop marketplace consultant coach tutor hair beauty barber cleaning cleaner gardener vehicle mileage work from home'],
+        ['label' => 'Demo Data', 'icon' => 'fa-flask', 'url' => 'money/demo', 'group' => 'Money', 'order' => 5.9, 'permission' => 'money.edit',
+            'info' => 'Add a year of made-up records to try Money out, and delete all of them with one button.', 'keywords' => 'demo data sample example trial try out test records delete demo clear reset'],
         ['label' => 'Tax Rules', 'icon' => 'fa-scale-balanced', 'url' => 'money/tax-rules', 'hub' => 'settings', 'category' => 'Site', 'group' => 'Settings', 'order' => 2.65, 'permission' => 'settings.edit',
             'info' => 'The tax rates and rules of each tax year: Income Tax for England, Wales and Northern Ireland and for Scotland, National Insurance, allowances, mileage rates and the working-from-home flat rate.',
             'keywords' => 'tax rules rates bands personal allowance scotland scottish income tax national insurance class 4 class 2 small profits threshold trading allowance mileage rate pence per mile use of home flat rate payments on account making tax digital mtd threshold tax year copy next year'],
@@ -315,7 +317,14 @@ return [
         'data' => static fn(array $state): array => Setup::installData($state),
         'save' => static fn(\AP\Core\Request $request, array $state): array => Setup::installSave($request),
         'summary' => static fn(array $value): string => Setup::describe($value),
-        'apply' => static fn(\AP\Core\DB $db, \AP\Core\Settings $settings, array $value, array $state): array => ['Your business: ' . Setup::result(Setup::apply($db, $settings, $value))],
+        'apply' => static function (\AP\Core\DB $db, \AP\Core\Settings $settings, array $value, array $state): array {
+            $lines = ['Your business: ' . Setup::result(Setup::apply($db, $settings, $value))];
+            if (!empty($value['demo'])) {
+                $n = \AP\Modules\Money\Demo::loadWith($db, $settings, (string) (((array) ($value['trades'] ?? []))[0] ?? 'freelancer'));
+                $lines[] = 'Demo data: ' . ($n['invoices'] ?? 0) . ' invoices, ' . ($n['payments'] ?? 0) . ' payments and ' . ($n['expenses'] ?? 0) . ' expenses added. Delete them all from the dashboard when you are done.';
+            }
+            return $lines;
+        },
     ],
     'search' => [
         'money_income' => ['label' => 'Income', 'icon' => 'fa-hand-holding-dollar', 'permission' => 'money.view', 'limit' => 5,

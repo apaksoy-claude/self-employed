@@ -55,6 +55,12 @@ $layoutCustom ??= false;
                 <input type="hidden" name="vehicle" value="0"><input class="form-check-input" type="checkbox" role="switch" name="vehicle" value="1"<?= $flag('vehicle') ? ' checked' : '' ?> data-touched="<?= !empty($vehicleTouched) || $hasOld ? '1' : '0' ?>">
                 <span><strong>I Use A Vehicle For Work</strong><small>Shows Vehicles and the Mileage Log, and adds running costs such as fuel, insurance and parking.</small></span>
             </label>
+            <?php if ($context === 'install'): ?>
+            <label class="su-switch">
+                <input type="hidden" name="demo" value="0"><input class="form-check-input" type="checkbox" role="switch" name="demo" value="1"<?= $flag('demo') ? ' checked' : '' ?>>
+                <span><strong>Add Demo Data So I Can Try It First</strong><small>About a year of made-up clients, invoices and expenses. Delete all of it with one button on the dashboard.</small></span>
+            </label>
+            <?php endif; ?>
             <label class="su-switch">
                 <input type="hidden" name="stock" value="0"><input class="form-check-input" type="checkbox" role="switch" name="stock" value="1"<?= $flag('stock') ? ' checked' : '' ?>>
                 <span><strong>I Sell Goods I Keep In Stock</strong><small>Shows Money > Stock: what is left, what it cost, low stock and the stock count.</small></span>

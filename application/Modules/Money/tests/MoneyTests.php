@@ -3090,6 +3090,58 @@ final class MoneyTests
         return '';
     }
 
+    public function test_demo_data_fills_every_page_and_one_button_takes_it_all_away(): string
+    {
+        $this->importFake();
+        $this->useDb($this->db, function (): void {
+            $s = $this->liveSettings();
+            $db = $this->db;
+            $D = \AP\Modules\Money\Demo::class;
+            $before = [];
+            foreach (['money_invoices', 'money_invoice_items', 'money_income', 'money_expenses', 'money_contacts', 'money_categories', 'money_streams', 'money_assets', 'money_trips', 'money_vehicles'] as $t) {
+                $before[$t] = $db->table($t)->count();
+            }
+            $page = (new \AP\Modules\Money\Controllers\DemoController())->index(new Request('GET', '/admin/money/demo', [], [], [], ['HTTP_HOST' => 'localhost']))->body;
+            $this->assert(str_contains($page, 'Add Demo Data') && !$D::loaded(), 'the page offers demo data');
+            $n = $D::load('freelancer', '2026-10-27');
+            $this->assert($D::loaded() && $n['invoices'] >= 20 && $n['expenses'] >= 50 && $n['payments'] >= 10 && $n['trips'] > 20 && $n['equipment'] === 1, 'a year of records: ' . json_encode($n));
+            $this->assert($D::load('freelancer') === [], 'it is only added once');
+            $this->assert(str_ends_with(Money::nextInvoiceNumber(), '3'), 'your own invoice numbers carry on as before: ' . Money::nextInvoiceNumber());
+            $states = [];
+            $paid = Money::paidByInvoice();
+            foreach ($db->table('money_invoices')->where('number', 'like', 'DEMO-%')->get() as $inv) {
+                $states[Money::invoiceState($inv, $paid[(int) $inv['id']] ?? 0.0, '2026-10-27')] = true;
+            }
+            $this->assert(isset($states['paid'], $states['unpaid']) || isset($states['paid'], $states['overdue']), 'paid and open invoices: ' . json_encode(array_keys($states)));
+            $this->assert($db->table('money_contacts')->where('name', 'like', '%(Demo)')->count() >= 5, 'made-up names are marked');
+            $dash = \AP\Modules\Money\Dashboard::html();
+            $this->assert(str_contains($dash, 'You Are Looking At Demo Data') && str_contains($dash, 'money/demo/clear'), 'the dashboard says it is demo data, with the button');
+            // One of your own records uses a demo supplier: that supplier is kept.
+            $sup = (int) $db->table('money_contacts')->where('name', 'Sample Telecom (Demo)')->value('id');
+            $db->table('money_expenses')->insert(['expense_date' => '2026-10-20', 'title' => 'My own phone bill', 'category_id' => 7, 'contact_id' => $sup, 'amount' => 30, 'business_percent' => 100, 'created_at' => '2026-10-20 00:00:00', 'updated_at' => '2026-10-20 00:00:00']);
+            $gone = (new \AP\Modules\Money\Controllers\DemoController())->clear(new Request('POST', '/x', [], ['return' => '/admin'], [], ['HTTP_HOST' => 'localhost']));
+            $this->assert($gone->status === 302 && !$D::loaded() && !$db->table('money_demo_rows')->exists(), 'one button takes it away');
+            foreach ($before as $t => $c) {
+                $now = $db->table($t)->count();
+                $want = $c + ($t === 'money_expenses' ? 1 : 0) + ($t === 'money_contacts' ? 1 : 0);
+                $this->assert($now === $want, $t . ' is back to what it was: ' . $now . ' not ' . $want);
+            }
+            $this->assert($db->table('money_contacts')->where('id', $sup)->exists() && $db->table('money_expenses')->where('title', 'My own phone bill')->exists(), 'your own record and the supplier it uses are kept');
+            // A seller with stock, made at installation time.
+            $s->set('money.feature_stock', true);
+            $apply = (require __DIR__ . '/../module.php')['install_step']['apply'];
+            $lines = $apply($db, $s, ['mode' => 'ready', 'trades' => ['seller'], 'vehicle' => false, 'home' => false, 'dashboard' => false, 'demo' => true, 'skip' => ['categories' => [], 'streams' => [], 'paid_by' => [], 'paid_with' => []]], []);
+            $this->assert(str_contains(implode(' ', $lines), 'Demo data:') && $db->table('money_stock_items')->where('name', 'like', 'Demo %')->count() === 3 && $db->table('money_invoices')->where('number', 'like', 'DEMO-%')->count() === 0
+                && $db->table('money_income')->where('title', 'Marketplace payout')->count() > 40, 'the installer can add demo data for a seller: ' . implode(' | ', $lines));
+            $this->assert(str_contains(Setup::describe(['mode' => 'ready', 'trades' => ['seller'], 'demo' => true]), 'Demo data added'), 'the installer review mentions it');
+            $D::clear();
+            $this->assert($db->table('money_stock_items')->where('name', 'like', 'Demo %')->count() === 0 && $db->table('money_income')->where('title', 'Marketplace payout')->count() === 0, 'and it goes too');
+            $items = array_column(app(\AP\Core\ModuleManager::class)->menu(), 'keywords', 'url');
+            $this->assert(str_contains((string) ($items['money/demo'] ?? ''), 'sample'), 'the search finds Demo Data');
+        });
+        return '';
+    }
+
     private function useDb(DB $db, callable $fn): void
     {
         require_once AP_ROOT . '/tests/FakeAuth.php';

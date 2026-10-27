@@ -14,6 +14,7 @@ use AP\Modules\Money\Controllers\CustomFieldController;
 use AP\Modules\Money\Controllers\StockController;
 use AP\Modules\Money\Controllers\StreamController;
 use AP\Modules\Money\Controllers\DashboardController;
+use AP\Modules\Money\Controllers\DemoController;
 use AP\Modules\Money\Controllers\ExpenseController;
 use AP\Modules\Money\Controllers\FileController;
 use AP\Modules\Money\Controllers\GmailController;
@@ -134,6 +135,9 @@ return static function (Router $r): void {
             $r->post('/vat/file', [VatController::class, 'file'], 'vat.file');
             $r->post('/vat/unfile', [VatController::class, 'unfile'], 'vat.unfile');
             $r->post('/cis/mark', [CisController::class, 'mark'], 'cis.mark');
+            $r->get('/demo', [DemoController::class, 'index'], 'demo');
+            $r->post('/demo/load', [DemoController::class, 'load'], 'demo.load');
+            $r->post('/demo/clear', [DemoController::class, 'clear'], 'demo.clear');
             $r->get('/bank', [BankController::class, 'index'], 'bank');
             $r->post('/bank/upload', [BankController::class, 'upload'], 'bank.upload');
             $r->post('/bank/rules', [BankController::class, 'rules'], 'bank.rules');

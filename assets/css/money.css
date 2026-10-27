@@ -509,3 +509,14 @@ circle.mn-s1, circle.mn-s2, circle.mn-s3, circle.mn-s4, circle.mn-s5, circle.mn-
 .bk-bulk .form-select { min-width: 14rem; }
 .bk-page .mn-rows li { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem 0; border-bottom: 1px dashed var(--mn-line); font-size: .9rem; }
 .bk-page .mn-rows li small { display: block; color: var(--mn-sub); font-size: .78rem; }
+
+/* Money > Demo Data */
+.dm-page .mn-card h2 i { color: var(--ap-accent); margin-right: .45rem; }
+.dm-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .8rem; }
+.dm-form .ap-field { margin: 0; min-width: 16rem; }
+.dm-counts { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-wrap: wrap; gap: .6rem; }
+.dm-counts li { padding: .6rem .9rem; border-radius: 12px; background: #F5F6FA; min-width: 8rem; }
+.dm-counts strong { display: block; font-size: 1.25rem; }
+.dm-counts span { color: var(--mn-sub); font-size: .8rem; }
+.dm-banner { background: #fff6e2; border-color: #f6dfa8; }
+.dm-banner .su-banner-icon { background: #fdecc8; color: #8a5800; }

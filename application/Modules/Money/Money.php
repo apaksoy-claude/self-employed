@@ -533,7 +533,8 @@ final class Money
         $prefix = (string) setting('money.invoice_prefix', 'INVOICE #');
         $max = 0;
         foreach (self::db()->table('money_invoices')->pluck('number') as $n) {
-            if (preg_match('/(\d+)\s*$/', (string) $n, $m)) {
+            // Demo invoices have their own numbers, so your own carry on as if they were not there.
+            if (!str_starts_with((string) $n, 'DEMO-') && preg_match('/(\d+)\s*$/', (string) $n, $m)) {
                 $max = max($max, (int) $m[1]);
             }
         }

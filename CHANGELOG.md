@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.46.0 - Demo data for trials
+Update package: install from System > Updates, then press "Finish update" (adds one small table).
+- New page: Money > Demo Data. Add about a year of made-up records to try Money out, made for the kind of work you choose: clients and suppliers, invoices (paid, part paid and still open) with payments, or weekly takings for drivers, sellers and salons, five to eight expenses a month across your own categories, a vehicle with a mileage log, a laptop as equipment, and stock items for sellers when Stock is on.
+- Made-up names end in "(Demo)" and demo invoices are numbered DEMO-0001 and on, so your own invoice numbers carry on as if they were not there.
+- Delete All Demo Data takes away exactly what was added, with one button on the Demo Data page or on the dashboard banner shown while demo data is in use. A demo client, supplier, category or stream that one of your own records now uses is kept.
+- The installer's Your Business step can add demo data straight away.
+- Tests: Money 66, core 65.
+
 ## 1.45.0 - Email import from any provider
 Update package: install from System > Updates. No database changes.
 - Email Import now works with any mailbox that offers IMAP, not just Gmail. Settings > Email Import has buttons that fill in the server, port, security and bin folder for Gmail, Yahoo, iCloud, AOL, Zoho, Fastmail and IONOS, or type in any other server.
